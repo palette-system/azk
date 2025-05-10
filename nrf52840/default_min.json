@@ -1,0 +1,1 @@
+{"default":1,"vendorId":"0xe622","productId":"0x0533","status_pin":-1,"led_num":[],"key_matrix":[],"keyboard_language":0,"keyboard_name":"XIAO_BLE","keyboard_type":"xiao_ble","keyboard_pin":{"row":[],"col":[],"direct":[0],"touch":[]},"default_layer":0,"layers":{"layer_0":{"name":"レイヤー0","keys":{"key_0":{"press":{"action_type":1,"key":[4]}}}}}}
