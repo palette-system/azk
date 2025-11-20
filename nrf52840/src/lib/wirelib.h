@@ -25,6 +25,15 @@ struct azxp_key_data {
     uint8_t key_input[16];
 };
 
+// トラックパッド CST816用レスポンスデータ
+struct trackpad_cst816_data {
+    uint8_t gesture_id;  // ジェスチャーID (0=none, 1=up, 2=down, 3=left, 4=right, 5=single_click, 6=double_click, 12=long_press)
+    uint8_t points; // タッチ数 (1～2まで)
+    uint8_t event;    // イベント (0=Down, 1=Up, 2=Contact)
+    uint16_t x;  // x座標
+    uint16_t y; // y座標
+};
+
 
 // クラスの定義
 class Wirelib
@@ -39,6 +48,7 @@ class Wirelib
         void send_azxp_setting(int addr, uint8_t *setting); // AZエクスパンダ コンフィグ送信
         azxp_key_info read_key_info(int addr); // AZエクスパンダ キー数取得
         azxp_key_data read_azxp_key(int addr, azxp_key_info kinfo); // AZエクスパンダのキー入力状態を取得
+        trackpad_cst816_data read_cst816(int addr);
 		
 };
 

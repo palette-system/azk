@@ -166,6 +166,14 @@ nubkey_option *nubopt;
 short nubopt_len;
 int8_t nubkey_status;
 
+// トラックパッド CST816 用
+uint16_t cst816_old_x; // 前回取得したX座標
+uint16_t cst816_old_y; // 前回取得したY座標
+uint16_t cst816_tap_time; // タップしていた時間
+uint16_t cst816_tap_down_time; // タップダウンしていた時間
+uint16_t cst816_tap_distance; // タップ移動距離
+uint16_t cst816_tap_distance_old; // 前回のタップ移動距離
+
 // 動作電圧チェック用ピン
 int8_t power_read_pin; // 電圧を読み込むピン
 
@@ -508,7 +516,7 @@ void AzCommon::load_setting_json() {
             i2copt[j].opt_type = opt_type & 0xff;
             // Serial.printf("i2c_option: load %D type %D - %D\n", i, opt_type, i2copt[j].opt_type);
             // マッピング情報の読み込み
-            if (opt_type == 1 || opt_type == 2 || opt_type == 3 || opt_type == 4 || opt_type == 5 || opt_type == 7) { // 1 = IOエキスパンダ（MCP23017）/ 2 = Tiny202 ロータリーエンコーダ
+            if (opt_type == 1 || opt_type == 2 || opt_type == 3 || opt_type == 4 || opt_type == 5 || opt_type == 7 || opt_type == 8) { // 1 = IOエキスパンダ（MCP23017）/ 2 = Tiny202 ロータリーエンコーダ
                 // キーマッピング設定
                 if (setting_obj["i2c_option"][i]["map"].is<JsonArray>() &&
                         setting_obj["i2c_option"][i]["map"].size() ) {
@@ -608,7 +616,7 @@ void AzCommon::load_setting_json() {
                 memcpy(i2copt[j].data, &i2crotary_obj, sizeof(i2c_rotary));
                 j++;
 
-            } else if (opt_type == 3 || opt_type == 4) { // 3 = 1U トラックボール PIM447  // 4 = フリック入力
+            } else if (opt_type == 3 || opt_type == 4 || opt_type == 8) { // 3 = 1U トラックボール PIM447  // 4 = フリック入力 // 8 = トラックパッド CST816
                 // アドレス
                 if (setting_obj["i2c_option"][i]["addr"].is<int>()) {
                     i2cpim447_obj.addr = setting_obj["i2c_option"][i]["addr"].as<signed int>();
@@ -1102,7 +1110,7 @@ int AzCommon::i2c_setup(int p, i2c_option *opt, short map_set) {
     // マップ設定をするフラグが無ければここで返す
     if (map_set <= 0) return p;
     // マッピングに合わせてキー番号を付けなおす
-    if (opt->opt_type == 1 || opt->opt_type == 2 || opt->opt_type == 3 || opt->opt_type == 4 || opt->opt_type == 5 || opt->opt_type == 7) {
+    if (opt->opt_type == 1 || opt->opt_type == 2 || opt->opt_type == 3 || opt->opt_type == 4 || opt->opt_type == 5 || opt->opt_type == 7 || opt->opt_type == 8) {
         // キーの番号をmapデータに入れる
         // あとでキー設定の番号入れ替えをここでやる
         memcpy(&i2cmap_obj, opt->i2cmap, sizeof(i2c_map));
@@ -1316,6 +1324,7 @@ int AzCommon::i2c_read(int p, i2c_option *opt, char *read_data) {
     tracktall_pim447_data pim447_data_obj;
     i2c_azxp i2cazxp_obj;
     azxp_key_data azxp_key_data_obj;
+    trackpad_cst816_data trackpad_cst816_obj;
     r = 0;
     e = 0;
     if (opt->opt_type == 1) {
@@ -1451,9 +1460,66 @@ int AzCommon::i2c_read(int p, i2c_option *opt, char *read_data) {
         e = SERIAL_INPUT_MAX;
         read_data_bit = 16;
 
+    } else if (opt->opt_type == 8) {
+        // トラックパッド CST816
+        memcpy(&i2cpim447_obj, opt->data, sizeof(i2c_pim447));
+        memcpy(&i2cmap_obj, opt->i2cmap, sizeof(i2c_map));
+        trackpad_cst816_obj = wirelib_cls.read_cst816(i2cpim447_obj.addr); // 入力情報取得
+        k = 0x00;
+        // 前回のX,Y座標からの移動距離分マウス移動
+        if (trackpad_cst816_obj.points == 0) {
+            // タッチ時間が短ければタップと判定する
+            if (cst816_tap_time > 2 && cst816_tap_time < 10 && cst816_tap_distance < 20) {
+                k = 0x01;
+            }
+            // タッチが離されたタイミングであればダウンタイムリセット
+            if (cst816_tap_time > 0) {
+                cst816_tap_down_time = 0;
+                cst816_tap_distance_old = cst816_tap_distance; // 前回の移動距離を保持
+            }
+            cst816_old_x = 0;
+            cst816_old_y = 0;
+            cst816_tap_time = 0; // タップ時間
+            cst816_tap_distance = 0; // 移動距離
+            cst816_tap_down_time++; // ダウンタイムカウントアップ(離されている時間)
+        } else if (trackpad_cst816_obj.points > 0) {
+            if (cst816_old_x > 0 && cst816_old_y > 0) {
+                if (i2cpim447_obj.rotate == 1) {
+                    x = (trackpad_cst816_obj.x - cst816_old_x) * 2;
+                    y = (trackpad_cst816_obj.y - cst816_old_y);
+                } else if (i2cpim447_obj.rotate == 2) {
+                    x = (trackpad_cst816_obj.y - cst816_old_y);
+                    y = (cst816_old_x - trackpad_cst816_obj.x) * 2;
+                } else if (i2cpim447_obj.rotate == 3) {
+                    x = (cst816_old_x - trackpad_cst816_obj.x) * 2;
+                    y = (cst816_old_y - trackpad_cst816_obj.y);
+                } else {
+                    x = (cst816_old_y - trackpad_cst816_obj.y);
+                    y = (trackpad_cst816_obj.x - cst816_old_x) * 2;
+                }
+                if (trackpad_cst816_obj.points == 1) {
+                    // 1点タッチはマウス移動
+                    press_mouse_list_push(0x2000, 5, x, y, 0, 0, i2cpim447_obj.speed);
+                    // ダブルタップ(ダウンタイムが短い)だった場合はボタンを押しっぱなしにする
+                    if (cst816_tap_down_time > 3 && cst816_tap_distance_old < 20 && cst816_tap_down_time < 30) {
+                        k = 0x01;
+                    }
+                } else {
+                    // 2点タッチ以上はスクロール
+                    press_mouse_list_push(0x2000, 5, 0, 0, y / -4, x / -4, 100);
+                }
+                cst816_tap_distance += abs(x) + abs(y);
+            }
+            cst816_old_x = trackpad_cst816_obj.x;
+            cst816_old_y = trackpad_cst816_obj.y;
+            cst816_tap_time++;
+        }
+        read_raw[e] = k;
+        e++;
+
     }
     // 読み込んだデータからキー入力を取得
-    if (opt->opt_type == 1 || opt->opt_type == 2 || opt->opt_type == 3 || opt->opt_type == 4 || opt->opt_type == 5 || opt->opt_type == 7) {
+    if (opt->opt_type == 1 || opt->opt_type == 2 || opt->opt_type == 3 || opt->opt_type == 4 || opt->opt_type == 5 || opt->opt_type == 7 || opt->opt_type == 8) {
         // マップデータ分入力を取得
         for (j=0; j<i2cmap_obj.map_len; j++) {
             n = i2cmap_obj.map[j];

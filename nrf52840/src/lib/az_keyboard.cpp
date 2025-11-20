@@ -711,6 +711,11 @@ void AzKeyboard::status_led_loop() {
 // 定期実行の処理
 void AzKeyboard::loop_exec(void) {
 
+    // キーボードに接続していなければ何もしない
+    if (!bleKeyboard.isConnected()) {
+        delay(1000);
+        return;
+    }
 
     // 現在のキーの状態を前回部分にコピー
     common_cls.key_old_copy();

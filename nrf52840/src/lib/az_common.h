@@ -235,7 +235,6 @@ struct nubkey_setting_data {
 };
 
 
-
 // クラスの定義
 class AzCommon
 {
@@ -360,6 +359,15 @@ extern uint16_t seri_setting_del;
 extern nubkey_option *nubopt;
 extern short nubopt_len;
 extern int8_t nubkey_status;
+
+// トラックパッド CST816 用
+extern uint16_t cst816_old_x; // 前回取得したX座標
+extern uint16_t cst816_old_y; // 前回取得したY座標
+extern uint16_t cst816_tap_time; // タップしていた時間
+extern uint16_t cst816_tap_down_time; // タップダウンしていた時間
+extern uint16_t cst816_tap_distance; // タップ移動距離
+extern uint16_t cst816_tap_distance_old; // 前回のタップ移動距離
+
 
 // 動作電圧チェック用ピン
 extern int8_t power_read_pin; // 電圧を読み込むピン

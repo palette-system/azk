@@ -23,6 +23,7 @@ void HidrawCallbackExec(int data_length) {
     uint8_t *command_id   = &(remap_buf[0]);
     uint8_t *command_data = &(remap_buf[1]);
 	tracktall_pim447_data pim447_data_obj;
+	trackpad_cst816_data cst816_data_obj;
 
 	// 設定変更がされていて設定変更以外のコマンドが飛んできたら設定を保存
 	if (remap_change_flag && *command_id != 0x05) {
@@ -667,7 +668,23 @@ void HidrawCallbackExec(int data_length) {
 			return;
 
 		}
+		case id_get_cst816: {
+			// トラックパッド CST816 情報取得
+		    m = remap_buf[1]; // 読み込みに行くアドレス取得
+			send_buf[0] = id_get_cst816; // キーの入力状態
+			send_buf[1] = m; // 読み込みに行くアドレス
+            cst816_data_obj = wirelib_cls.read_cst816(m); // データ受け取る
+			send_buf[2] = cst816_data_obj.gesture_id;
+			send_buf[3] = cst816_data_obj.points;
+			send_buf[4] = cst816_data_obj.event;
+			send_buf[5] = (cst816_data_obj.x >> 8) & 0xFF;
+			send_buf[6] = (cst816_data_obj.x & 0xFF);
+			send_buf[7] = (cst816_data_obj.y >> 8) & 0xFF;
+			send_buf[8] = (cst816_data_obj.y & 0xFF);
+			for (i=9; i<32; i++) send_buf[i] = 0x00;
+			return;
 
+		}
 		default: {
 			send_buf[0] = 0xFF;
 			for (i=1; i<32; i++) send_buf[i] = 0x00;

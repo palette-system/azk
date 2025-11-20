@@ -105,3 +105,27 @@ azxp_key_data Wirelib::read_azxp_key(int addr, azxp_key_info kinfo) {
     }
     return r;
 }
+
+// トラックパッド CST816 の情報取得
+trackpad_cst816_data Wirelib::read_cst816(int addr) {
+    int i;
+    uint8_t read_data[6];
+    trackpad_cst816_data r;
+    // コマンド送信
+    Wire.beginTransmission(addr);
+    Wire.write(0x01); // データ取得アドレス 0x01
+    Wire.endTransmission();
+    // 結果取得
+    Wire.requestFrom(addr, 6); // キー読み込みコマンド
+    i = 0;
+    while (Wire.available()) {
+        read_data[i] = Wire.read();
+        i++;
+    }
+    r.gesture_id = read_data[0];
+    r.points = read_data[1];
+    r.event = read_data[2] >> 6;
+    r.x = ((read_data[2] & 0xF) << 8) + read_data[3];
+    r.y = ((read_data[4] & 0xF) << 8) + read_data[5];
+    return r;
+}
