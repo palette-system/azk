@@ -435,6 +435,33 @@ void AzKeyboard::key_down_action(int key_num, short press_type) {
         // キー押したよリストに追加
         press_key_list_push(action_type, key_num, -1, select_layer_no, -1, press_type);
 
+    } else if (action_type == 12) {
+        // コマンド入力
+        setting_normal_input normal_input;
+        memcpy(&normal_input, key_set.data, sizeof(setting_normal_input));
+        // 全て離す
+        bleKeyboard.releaseAll();
+        // hold が無ければ通常のキー入力
+        for (i=0; i<normal_input.key_length; i++) {
+            if (normal_input.key[i] == 0x4005) {
+                // マウススクロールボタン
+                mouse_scroll_flag = true;
+            } else if (normal_input.key[i] & MOUSE_CODE) {
+                // マウスボタンだった場合
+                bleKeyboard.mouse_press(normal_input.key[i] - MOUSE_CODE); // マウスボタンを押す
+            } else if (normal_input.key[i] == 0) {
+                // 0 があったら一回離す
+                delay( (normal_input.repeat_interval > 0)? normal_input.repeat_interval: 10);
+                bleKeyboard.releaseAll();
+                delay( (normal_input.repeat_interval > 0)? normal_input.repeat_interval: 10);
+            } else {
+                // キーコードだった場合
+                bleKeyboard.press_raw(normal_input.key[i]); // キーを押す
+            }
+        }
+        // キー押したよリストに追加
+        press_key_list_push(action_type, key_num, -1, select_layer_no, -1, press_type);
+
     }
 }
 

@@ -913,8 +913,8 @@ void AzCommon::get_keymap_one(JsonObject json_obj, setting_key_press *press_obj,
     }
     // ボタンの動作
     press_obj->action_type = json_obj["action_type"].as<signed int>();
-    if (press_obj->action_type == 1) {
-        // 通常入力
+    if (press_obj->action_type == 1 || press_obj->action_type == 12) {
+        // 1.通常入力 / 12.コマンド入力
         normal_input.key_length = json_obj["key"].size();
         normal_input.key = new uint16_t[normal_input.key_length];
         for (j=0; j<normal_input.key_length; j++) {
