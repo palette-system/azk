@@ -451,14 +451,14 @@ void AzKeyboard::key_down_action(int key_num, short press_type) {
                 bleKeyboard.mouse_press(normal_input.key[i] - MOUSE_CODE); // マウスボタンを押す
             } else if (normal_input.key[i] == 0) {
                 // 0 があったら一回離す
-                delay( (normal_input.repeat_interval > 0)? normal_input.repeat_interval: 10);
                 bleKeyboard.releaseAll();
-                delay( (normal_input.repeat_interval > 0)? normal_input.repeat_interval: 10);
             } else {
                 // キーコードだった場合
                 bleKeyboard.press_raw(normal_input.key[i]); // キーを押す
             }
         }
+        if (normal_input.repeat_interval > 0) delay(normal_input.repeat_interval);
+        bleKeyboard.releaseAll();
         // キー押したよリストに追加
         press_key_list_push(action_type, key_num, -1, select_layer_no, -1, press_type);
 
