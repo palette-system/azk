@@ -189,6 +189,9 @@ struct i2c_pim447 {
     uint8_t addr; // PIM447のアドレス
     short speed; // マウス移動速度
     uint8_t rotate; // マウスの向き
+    short read_cycle; // 読み込みサイクル(ms)
+    uint8_t speed_type; // AZTOUCHスピード
+    uint8_t drag_flag; // AZTOUCHドラッグを有効化するか
 };
 
 // I2Cオプション AZ-Expander 
@@ -359,6 +362,10 @@ extern uint16_t seri_setting_del;
 extern nubkey_option *nubopt;
 extern short nubopt_len;
 extern int8_t nubkey_status;
+
+// AZTRACKPAD 用
+extern short aztrsc_x;
+extern short aztrsc_y;
 
 // トラックパッド CST816 用
 extern uint16_t cst816_old_x; // 前回取得したX座標

@@ -33,6 +33,7 @@ uint8_t Wirelib::read_rotary(int addr) {
     return Wire.read(); // データ受け取る
 };
 
+// AZ1UBALL 速度設定
 void Wirelib::set_az1uball_read_type(int addr, int set_mode) {
     Wire.beginTransmission(addr);
     if (set_mode) {
@@ -42,6 +43,14 @@ void Wirelib::set_az1uball_read_type(int addr, int set_mode) {
     }
     Wire.endTransmission();
 };
+
+// AZTOUCH 速度設定
+void Wirelib::set_aztouch_speed_type(int addr, uint8_t set_speed) {
+    Wire.beginTransmission(addr);
+    Wire.write(0x40);
+    Wire.write(set_speed);
+    Wire.endTransmission();
+}
 
 // 1Uトラックボール PIM447 から入力を取得する
 tracktall_pim447_data Wirelib::read_trackball_pim447(int addr) {

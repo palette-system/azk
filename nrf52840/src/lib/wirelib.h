@@ -44,6 +44,7 @@ class Wirelib
         int read(int addr, uint8_t *read_data, int read_len); // I2Cからデータ読み込み
 		uint8_t read_rotary(int addr); // ロータリエンコーダの入力取得
         void set_az1uball_read_type(int addr, int set_mode); // AZ1UBALLのデータ取得タイプを設定
+        void set_aztouch_speed_type(int addr, uint8_t set_speed); // AZTOUCHの速度タイプを設定
 		tracktall_pim447_data read_trackball_pim447(int addr); // 1U トラックボール PIM447 の入力取得
         void send_azxp_setting(int addr, uint8_t *setting); // AZエクスパンダ コンフィグ送信
         azxp_key_info read_key_info(int addr); // AZエクスパンダ キー数取得
