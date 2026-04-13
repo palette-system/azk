@@ -46,6 +46,7 @@ Adafruit MCP23017 Arduino Library by Adafruit version 2.3.2
 # hexからuf2出力
 
 ```
+cd C:\******\azk\nrf52840\build\Seeeduino.nrf52.xiaonRF52840Plus
 python.exe uf2conv.py nrf52840.ino.hex --family 0xADA52840 --convert --output azk_nrf52840.uf2
 ```
 

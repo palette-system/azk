@@ -1345,6 +1345,7 @@ int AzCommon::i2c_read(int p, i2c_option *opt, char *read_data) {
     unsigned long now_time;
     unsigned long start_time;
     unsigned long end_time;
+    uint8_t wcheck, hcheck;
     uint16_t rowput_mask;
     int rowput_len;
     int read_data_bit = 8;
@@ -1439,15 +1440,23 @@ int AzCommon::i2c_read(int p, i2c_option *opt, char *read_data) {
         if (i2cpim447_obj.rotate == 1) { // 右が上
             x = (pim447_data_obj.down - pim447_data_obj.up);
             y = (pim447_data_obj.left - pim447_data_obj.right);
+            wcheck = 0x01;
+            hcheck = 0x02;
         } else if (i2cpim447_obj.rotate == 2) { // 下が上
             x = (pim447_data_obj.left - pim447_data_obj.right);
             y = (pim447_data_obj.up - pim447_data_obj.down);
+            wcheck = 0x02;
+            hcheck = 0x01;
         } else if (i2cpim447_obj.rotate == 3) { // 左が上
             x = (pim447_data_obj.up - pim447_data_obj.down);
             y = (pim447_data_obj.right - pim447_data_obj.left);
+            wcheck = 0x01;
+            hcheck = 0x02;
         } else { // それ以外は上が上
             x = (pim447_data_obj.right - pim447_data_obj.left);
             y = (pim447_data_obj.down - pim447_data_obj.up);
+            wcheck = 0x02;
+            hcheck = 0x01;
         }
         if (x != 0 || y != 0) {
             if (x > 127) x = 127;
@@ -1460,7 +1469,7 @@ int AzCommon::i2c_read(int p, i2c_option *opt, char *read_data) {
                     m = (y == 0)? 0: (y > 0)? 1: -1;
                     n = (x == 0)? 0: (x > 0)? 1: -1;
                     press_mouse_list_push(0x2000, 5, 0, 0, m, n, 100); // action_type : 5 = マウス移動
-                } else if (pim447_data_obj.click & 0x02) {
+                } else if (pim447_data_obj.click & wcheck) {
                     // 横2点タッチ中
                     aztrsc_y += y;
                     m = 0;
@@ -1474,7 +1483,7 @@ int AzCommon::i2c_read(int p, i2c_option *opt, char *read_data) {
                         m = 0;
                     }
                     press_mouse_list_push(0x2000, 5, 0, 0, m, 0, 100); // action_type : 5 = マウス移動
-                } else if (pim447_data_obj.click & 0x01) {
+                } else if (pim447_data_obj.click & hcheck) {
                     // 縦2点タッチ中
                     aztrsc_x += x;
                     x = 0;
