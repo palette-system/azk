@@ -2,11 +2,43 @@
 
 
 
-# 動作確認手順書を参考にarduino開発環境を作成
+# 1. 動作確認手順書を参考にarduino開発環境を作成
 https://akizukidenshi.com/catalog/g/g131342/
 ```
 https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
 ```
+
+<br><br>
+
+
+# 2. ArduinoIDE のライブラリをインストール
+```
+ArduinoJson by Benoit Blanchon version 7.4.3
+Adafruit SSD 1306 by Adafruit version 2.5.17
+Adafruit NeoPixel by Adafruit version 1.15.5
+Adafruit MCP23017 Arduino Library by Adafruit version 2.3.2
+```
+
+<br><br>
+
+# 3. ArduinoIDE で hy0020.ino を開いてHY0020へ書き込みを行う
+1.の「動作確認手順書」を参考にPCとHY0020を繋いでください。<br>
+ArduinoIDEで hy0020.ino を開いて、メニューの三角マークを押して書き込みを行って下さい。<br>
+書き込み出来ればP0.07がボタンになった1キーだけのキーボードになります。<br>
+(P0.07とGNDを繋げるとAが入力されます)<br>
+
+<br><br>
+
+# 4. AZTOOLを開いてキーボードの設定
+3.までの手順を行えばキーボードとしてPCとペアリングまでは行えます。<br>
+AZTOOLから設定を行うと、どのGPIOにボタンを何個接続してなどの設定が行えます。<br>
+設定方法は下記のリンクを参考にして下さい。<br>
+<br>
+AZTOOL<br>
+<a href="https://palette-system.github.io/aztool/blue.html" target="_bleak">https://palette-system.github.io/aztool/blue.html</a><br>
+<br>
+操作方法YOUTUBE<br>
+<a href="https://www.youtube.com/watch?v=YMsCuBXAXsI" target="_bleak">https://www.youtube.com/watch?v=YMsCuBXAXsI</a><br>
 
 
 
@@ -15,14 +47,7 @@ https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
 C:\Users\user\AppData\Local\Arduino15\packages\adafruit\hardware\nrf52\1.7.0\variants\feather_nrf52832\variant.cpp
 ```
 
-
-# ライブラリ
-```
-ArduinoJson by Benoit Blanchon version 7.4.3
-Adafruit SSD 1306 by Adafruit version 2.5.17
-Adafruit NeoPixel by Adafruit version 1.15.5
-Adafruit MCP23017 Arduino Library by Adafruit version 2.3.2
-```
+<br><br>
 
 
 # ピン番号
