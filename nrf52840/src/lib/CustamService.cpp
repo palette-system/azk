@@ -43,13 +43,13 @@ void BLECustam::onCommandWritten(uint16_t conn_hdl, BLECharacteristic* character
 				send_buf[i] = save_file_data[p];
 				i++;
 				p++;
-				if (i >= 32) break;
+				if (i >= OUTPUT_REPORT_RAW_MAX_LEN) break;
 			}
-			while (i<32) {
+			while (i<OUTPUT_REPORT_RAW_MAX_LEN) {
 				send_buf[i] = 0x00;
 				i++;
 			}
-            _characteristic_input->notify(send_buf, 32);
+            _characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
 			if (p >= save_file_length) break;
 
 		}
@@ -64,7 +64,7 @@ void BLECustam::onCommandWritten(uint16_t conn_hdl, BLECharacteristic* character
 		// 返信データ送信
 		if (send_buf[0]) {
             // ble_gatt.h の BLE_GATT_ATT_MTU_DEFAULT がデフォルト 23 を 35 にしないと 送信する時 20 で通知が行ってしまう
-            _characteristic_input->notify(send_buf, 32);
+            _characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
 		}
 	}
 }
@@ -78,8 +78,8 @@ BLECustam::BLECustam(void) :
 
 err_t BLECustam::begin(void)
 {
-    _characteristic_input = new BLECharacteristic(CUSTAM_UUID_INPUT, BLERead | BLENotify, 32, true); // UUID, パーミッション, データサイズ, データサイズ固定かどうか
-    _characteristic_output = new BLECharacteristic(CUSTAM_UUID_OUTPUT, BLEWrite, 32, true); // UUID, パーミッション, データサイズ, データサイズ固定かどうか
+    _characteristic_input = new BLECharacteristic(CUSTAM_UUID_INPUT, BLERead | BLENotify, INPUT_REPORT_RAW_MAX_LEN, true); // UUID, パーミッション, データサイズ, データサイズ固定かどうか
+    _characteristic_output = new BLECharacteristic(CUSTAM_UUID_OUTPUT, BLEWrite, OUTPUT_REPORT_RAW_MAX_LEN, true); // UUID, パーミッション, データサイズ, データサイズ固定かどうか
     write_index = 0;
   // Invoke base class begin()
   VERIFY_STATUS( BLEService::begin() );

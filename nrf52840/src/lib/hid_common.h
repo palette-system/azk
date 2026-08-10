@@ -109,9 +109,6 @@ typedef struct
 typedef uint8_t MediaKeyReport[2];
 
 
-#define INPUT_REPORT_RAW_MAX_LEN 32
-#define OUTPUT_REPORT_RAW_MAX_LEN 32
-
 
 const unsigned short _asciimap[] PROGMEM =
 {

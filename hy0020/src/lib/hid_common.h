@@ -3,56 +3,6 @@
 
 #include "Arduino.h"
 
-// レイヤー切り替え同時押し許容数
-#define PRESS_KEY_MAX 8
-
-// マウス移動ボタン同時押し許容数
-#define PRESS_MOUSE_MAX 4
-
-// 今押されているボタンの情報
-struct press_key_data {
-    short action_type; // キーの動作タイプ 0=設定なし / 1=通常入力 / 2=テキスト入力 / 3=レイヤー変更 / 4=WEBフック
-    short layer_id; // キーを押した時のレイヤーID
-    short key_num; // キー番号
-    short press_type; // 入力タイプ(0=press / 1=sub_press)
-    short key_id; // 送信した文字
-    short press_time; // キーを押してからどれくらい経ったか
-    short unpress_time; // キーを離してからどれくらい経ったか
-    short repeat_interval; // 連打の間隔
-    short repeat_index; // 現在の連打カウント
-};
-
-
-// 今押されているマウスボタン情報
-struct press_mouse_data {
-    short key_num; // キー番号
-    short action_type; // 動作のタイプ(5=マウス移動 / 10=アナログマウス移動)
-    short move_x; // X座標
-    short move_y; // Y座標
-    short move_wheel; // 縦ホイール
-    short move_hWheel; // 横ホイール
-    short move_speed; // 移動速度
-    short move_index; // 移動index
-};
-
-// holdの設定
-extern uint8_t hold_type;
-extern uint8_t hold_time;
-
-// 押している最中のキーデータ
-extern press_key_data press_key_list[PRESS_KEY_MAX];
-
-// 押している最中のマウス移動
-extern press_mouse_data press_mouse_list[PRESS_MOUSE_MAX];
-
-// マウスのスクロールボタンが押されているか
-extern bool mouse_scroll_flag;
-
-// aztoolで設定中かどうか
-extern uint8_t aztool_mode_flag;
-
-// オールクリア送信フラグ
-extern int press_key_all_clear;
 
 
 enum via_command_id {
@@ -158,8 +108,7 @@ typedef struct
 // メディアキー構造
 typedef uint8_t MediaKeyReport[2];
 
-// ハッシュ値計算用
-int azcrc32(uint8_t* d, int len);
+
 
 const unsigned short _asciimap[] PROGMEM =
 {
@@ -308,7 +257,6 @@ const unsigned short _asciimap[] PROGMEM =
   
   0       // DEL
 };
-
 
 
 #endif

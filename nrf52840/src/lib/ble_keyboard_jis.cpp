@@ -396,21 +396,21 @@ bool BleKeyboardJIS::onShift()
 // コネクションインターバル設定
 void BleKeyboardJIS::setConnInterval(int interval_type)
 {
-  if (hid_power_saving_mode == 0) return; // 通常モードなら何もしない
-  hid_state_change_time = millis() + hid_saving_time;
-  if (hid_power_saving_state == interval_type) return; // ステータスの変更が無ければ何もしない
-  hid_power_saving_state = interval_type;
-  if (hid_interval_saving == hid_interval_normal) return; // 省電力モードのインターバルと通常モードのインターバルが一緒なら何もしない
-  if (!this->isConnected()) return; // 接続していなければ何もしない
-  if (interval_type == 1) {
+  // if (hid_power_saving_mode == 0) return; // 通常モードなら何もしない
+  // hid_state_change_time = millis() + hid_saving_time;
+  // if (hid_power_saving_state == interval_type) return; // ステータスの変更が無ければ何もしない
+  // hid_power_saving_state = interval_type;
+  // if (hid_interval_saving == hid_interval_normal) return; // 省電力モードのインターバルと通常モードのインターバルが一緒なら何もしない
+  // if (!this->isConnected()) return; // 接続していなければ何もしない
+  // if (interval_type == 1) {
     // 省電力中
-    loop_delay = 100;
+    // loop_delay = 100;
     // this->pServer->updateConnParams(hid_conn_handle, hid_interval_saving - 2, hid_interval_saving + 2, 0, 200);
-  } else {
+  // } else {
     // 通常
-    loop_delay = loop_delay_default;
+    // loop_delay = loop_delay_default;
     // this->pServer->updateConnParams(hid_conn_handle, hid_interval_normal - 2, hid_interval_normal + 2, 0, 200);
-  }
+  // }
     
 }
 

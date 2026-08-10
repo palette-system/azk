@@ -106,7 +106,7 @@ void BleKeyboardJIS::startAdv(void)
  */
 void BleKeyboardJIS::set_keyboard_led(uint16_t conn_handle, uint8_t led_bitmap)
 {
-  // led_map = led_bitmap;
+  led_map = led_bitmap;
 }
 
 
@@ -118,6 +118,7 @@ bool BleKeyboardJIS::isConnected(void)
 
 
 unsigned short BleKeyboardJIS::modifiers_press(unsigned short k) {
+  this->setConnInterval(0); // 消費電力モード解除
   if (k & JIS_SHIFT) { // shift
     this->_keyReport.modifier |= 0x02; // the left shift modifier
     k &= 0xFF;
@@ -162,6 +163,7 @@ void BleKeyboardJIS::shift_release() {
 }
 
 unsigned short BleKeyboardJIS::modifiers_media_press(unsigned short k) {
+  this->setConnInterval(0); // 消費電力モード解除
   if (k == 8193) { // Eject
     this->_mediaKeyReport[0] |= 0x01;
     this->sendReport(&this->_mediaKeyReport);
@@ -237,6 +239,7 @@ unsigned short BleKeyboardJIS::modifiers_media_release(unsigned short k) {
 
 void BleKeyboardJIS::sendReport(hid_keyboard_report_t* keys)
 {
+    this->setConnInterval(0); // 消費電力モード解除
     blehid.keyboardReport(keys);
     // this->pInputCharacteristic->setValue((uint8_t*)keys, sizeof(KeyReport));
     // this->pInputCharacteristic->notify();
@@ -244,6 +247,7 @@ void BleKeyboardJIS::sendReport(hid_keyboard_report_t* keys)
 
 void BleKeyboardJIS::sendReport(MediaKeyReport* keys)
 {
+  this->setConnInterval(0); // 消費電力モード解除
   if (this->isConnected())
   {
     // this->pInputCharacteristic2->setValue((uint8_t*)keys, sizeof(MediaKeyReport));
@@ -279,6 +283,9 @@ void BleKeyboardJIS::mouse_release(uint8_t b)
 void BleKeyboardJIS::mouse_move(signed char x, signed char y, signed char wheel, signed char hWheel)
 {
   if (this->isConnected()) {
+        if (x != 0 || y != 0 || wheel != 0 || hWheel != 0 || this->_MouseButtons != 0) {
+            this->setConnInterval(0); // 消費電力モード解除
+        }
         /*
         uint8_t m[5];
         m[0] = this->_MouseButtons;
@@ -386,5 +393,25 @@ bool BleKeyboardJIS::onShift()
   return false;
 }
 
+// コネクションインターバル設定
+void BleKeyboardJIS::setConnInterval(int interval_type)
+{
+  // if (hid_power_saving_mode == 0) return; // 通常モードなら何もしない
+  // hid_state_change_time = millis() + hid_saving_time;
+  // if (hid_power_saving_state == interval_type) return; // ステータスの変更が無ければ何もしない
+  // hid_power_saving_state = interval_type;
+  // if (hid_interval_saving == hid_interval_normal) return; // 省電力モードのインターバルと通常モードのインターバルが一緒なら何もしない
+  // if (!this->isConnected()) return; // 接続していなければ何もしない
+  // if (interval_type == 1) {
+    // 省電力中
+    // loop_delay = 100;
+    // this->pServer->updateConnParams(hid_conn_handle, hid_interval_saving - 2, hid_interval_saving + 2, 0, 200);
+  // } else {
+    // 通常
+    // loop_delay = loop_delay_default;
+    // this->pServer->updateConnParams(hid_conn_handle, hid_interval_normal - 2, hid_interval_normal + 2, 0, 200);
+  // }
+    
+}
 
 

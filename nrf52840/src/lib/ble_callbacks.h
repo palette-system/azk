@@ -9,6 +9,9 @@
 
 using namespace Adafruit_LittleFS_Namespace;
 
+#define INPUT_REPORT_RAW_MAX_LEN 20
+#define OUTPUT_REPORT_RAW_MAX_LEN 20
+
 // HidrawCallback
 void HidrawCallbackExec(int data_length);
 

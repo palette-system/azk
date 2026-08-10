@@ -27,6 +27,11 @@ Seed nRF52 Boards by Seeed Studio 1.1.10
 C:\Users\user\AppData\Local\Arduino15\packages\Seeeduino\hardware\nrf52\1.1.10\cores\nRF5\nordic\softdevice\s140_nrf52_7.3.0_API\include\ble_gatt.h
 ```
 
+```
+C:\Users\user\AppData\Local\Arduino15\packages\adafruit\hardware\nrf52\1.7.0\cores\nRF5\nordic\softdevice\s132_nrf52_6.1.1_API\include\ble_gatt.h
+```
+
+
 # 下記のファイルの g_ADigitalPinMap で digitalWrite とかで使用する番号の定義がある
 ```
 c:\Users\user\AppData\Local\Arduino15\packages\Seeeduino\hardware\nrf52\1.1.10\variants\Seeed_XIAO_nRF52840\variant.cpp

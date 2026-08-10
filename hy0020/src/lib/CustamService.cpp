@@ -12,8 +12,12 @@ void BLECustam::onCommandWritten(uint16_t conn_hdl, BLECharacteristic* character
 	int i;
 	memcpy(remap_buf, data, data_length);
 
+    // 省電力モードの場合解除
+    if (hid_power_saving_mode == 1 && hid_power_saving_state == 1) { // 省電力モードON で、現在の動作モードが省電力
+        hid_power_saving_state = 2;
+    }
 
-  if (remap_buf[0] == id_get_file_data) {
+    if (remap_buf[0] == id_get_file_data) {
 		// 0x31 ファイルデータ要求
 		int s, p, h, l, m, j;
 		// 情報を取得
@@ -74,8 +78,8 @@ BLECustam::BLECustam(void) :
 
 err_t BLECustam::begin(void)
 {
-    _characteristic_input = new BLECharacteristic(CUSTAM_UUID_INPUT, BLERead | BLENotify, 20, true); // UUID, パーミッション, データサイズ, データサイズ固定かどうか
-    _characteristic_output = new BLECharacteristic(CUSTAM_UUID_OUTPUT, BLEWrite, 20, true); // UUID, パーミッション, データサイズ, データサイズ固定かどうか
+    _characteristic_input = new BLECharacteristic(CUSTAM_UUID_INPUT, BLERead | BLENotify, INPUT_REPORT_RAW_MAX_LEN, true); // UUID, パーミッション, データサイズ, データサイズ固定かどうか
+    _characteristic_output = new BLECharacteristic(CUSTAM_UUID_OUTPUT, BLEWrite, OUTPUT_REPORT_RAW_MAX_LEN, true); // UUID, パーミッション, データサイズ, データサイズ固定かどうか
     write_index = 0;
   // Invoke base class begin()
   VERIFY_STATUS( BLEService::begin() );

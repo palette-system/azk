@@ -6,14 +6,13 @@
 #include "BLECharacteristic.h"
 #include "BLEService.h"
 
-#include "hid_common.h"
 
 #include "ble_callbacks.h"
 
-#define  CUSTAM_UUID_SERVICE  "0000ff14-0000-1000-8000-00805f9b34fb"
-#define  CUSTAM_UUID_INPUT  "0000ff15-0000-1000-8000-00805f9b34fb"
-#define  CUSTAM_UUID_OUTPUT  "0000ff16-0000-1000-8000-00805f9b34fb"
 
+#define  CUSTAM_UUID_SERVICE  "0000ff14-0000-1000-8000-00805f9b34fb"
+#define  CUSTAM_UUID_INPUT  "0000ff17-0000-1000-8000-00805f9b34fb"
+#define  CUSTAM_UUID_OUTPUT  "0000ff18-0000-1000-8000-00805f9b34fb"
 
 extern BLECharacteristic *_characteristic_input;
 extern BLECharacteristic *_characteristic_output;
