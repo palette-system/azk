@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>hy0020 writer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="lib/utils/binary.js"></script>
+    <script src="lib/utils/crc16.js"></script>
+    <script src="lib/utils/slip.js"></script>
+    <script src="lib/utils/zip.js"></script>
+    <script src="lib/models.js"></script>
+    <script src="lib/init-packet.js"></script>
+    <script src="lib/transport/serial.js"></script>
+    <script src="lib/package.js"></script>
+    <script src="lib/dfu.js"></script>
+</head>
+<body>
+
+<script language="JavaScript"><!--
+
+var nrfutil = {};
+
+// 指定したURLのファイルをダウンロードする
+nrfutil.ajax_array_buffer = function(src) {
+    return new Promise((resolve, reject) => {
+        var xhr = new XMLHttpRequest();
+        xhr.open('GET', src, true);
+        xhr.responseType = "arraybuffer"; // arraybuffer blob text json 
+        xhr.onload = function(e) {
+            console.log("onload");
+            console.log(e);
+            console.log(xhr);
+            if (xhr.status == 200) {
+                resolve(xhr.response);
+            } else {
+                resolve(null);
+            }
+        };
+        xhr.send();
+    });
+};
+
+nrfutil.write = async function(zip_uri) {
+      // シリアルポート選択
+    var transport = new DfuTransportSerial({
+        baudRate: 115200,
+        flowControl: false,
+        singleBank: false
+    });
+
+    // シリアルポートオープン
+    // シリアルポート選択のウィンドウが出て選択する
+    // (このメソッドはバックエンドで動き続けないといけないので非同期)
+    transport.open();
+
+    // 接続されるまで待つ
+    while (!transport.isOpen()) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+    }
+
+    // ZIPファイルをダウンロード
+    var firmwareData = await nrfutil.ajax_array_buffer(zip_uri);
+    if (!firmwareData) { // ダウンロード失敗
+        transport.logger.error("download error: " + zip_uri); // メッセージ表示
+        transport.close(); // シリアルポート閉じる
+        return;
+    }
+
+    // DFU初期化
+    var dfuInstance = new Dfu(firmwareData, transport);
+    
+    // ZIP 解凍
+    await dfuInstance.initialize();
+    
+    // ファームウェア送信
+    await dfuInstance.executeDfu();
+    
+    // シリアルポートクローズ
+    transport.close();
+};
+
+
+//--></script>
+<input type="button" value="書き込み" onClick="JavaScript:nrfutil.write('./data/hy0020.ino.zip');"><br>
+<br><br>
+<div class="progress-container" id="progress-container" style="display: none;">
+status-message:<br>
+<div id="status-message"></div>
+</div>
+<br><br>
+console:<br>
+<div style="height: 200px; overflow-y: auto;width: 700px; background-color: black; color: #7ce5b5;" id="console"></div>
+<br><br>
+※ nrfutil-js を利用しています。<br>
+<a href="https://github.com/keyboardio/nrfutil-js">https://github.com/keyboardio/nrfutil-js</a>
+
+</body>
+</html>
