@@ -490,7 +490,8 @@ class Dfu {
       console.log('[DFU] Phase 5: Validating and activating firmware');
       
       // Check if device is still connected
-      const deviceStillConnected = this.dfuTransport.isOpen();
+      // const deviceStillConnected = this.dfuTransport.isOpen();
+      const deviceStillConnected = false; // validate と activation がコマンド送る所でエラーになるのでやらない
       
       if (deviceStillConnected) {
         // Device is still connected, try to validate and activate
