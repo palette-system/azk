@@ -27,9 +27,6 @@ nrfutil.ajax_array_buffer = function(src) {
         xhr.open('GET', src, true);
         xhr.responseType = "arraybuffer"; // arraybuffer blob text json 
         xhr.onload = function(e) {
-            console.log("onload");
-            console.log(e);
-            console.log(xhr);
             if (xhr.status == 200) {
                 resolve(xhr.response);
             } else {
@@ -86,9 +83,8 @@ nrfutil.write = async function(zip_uri) {
 <br><br>
 <h2>ファームウェア書き込み</h2>
 <input type="button" value="書き込み" onClick="JavaScript:nrfutil.write('./data/hy0020.ino.zip');"><br>
-<br>
-<div id="progress-container"><div id="status-message"></div></div>
-<div style="height: 200px; overflow-y: auto;width: 700px; background-color: black; color: #7ce5b5;" id="console"></div>
+<div id="progress-container"><div id="status-message">　</div></div>
+<div style="height: 150px; overflow-y: auto;width: 700px; background-color: black; color: #7ce5b5;" id="console"></div>
 <br><br>
 ※ nrfutil-js を利用しています。<br>
 <a href="https://github.com/keyboardio/nrfutil-js" target="_blank">https://github.com/keyboardio/nrfutil-js</a>
