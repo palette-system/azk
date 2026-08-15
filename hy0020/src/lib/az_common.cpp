@@ -133,6 +133,7 @@ short *direct_list;
 short *touch_list;
 short *hall_list;
 short *hall_offset;
+short read_type;
 
 // 入力ピン情報 I2C
 short *ioxp_list;
@@ -435,6 +436,12 @@ void AzCommon::load_setting_json() {
     for (i=0; i<touch_len; i++) {
         touch_list[i] = setting_obj["keyboard_pin"]["touch"][i].as<signed int>();
     }
+    if (setting_obj["keyboard_pin"]["read_type"].is<int>()) {
+        read_type = setting_obj["keyboard_pin"]["read_type"].as<signed int>(); // 0=シングルマトリックス / 1=ダブルマトリックス
+    } else {
+        read_type = 0; // デフォルトシングルマトリックス
+    }
+
 
     // 磁気スイッチ入力ピン情報取得
     if (setting_obj["keyboard_pin"]["hall"].is<JsonObject>()) {
@@ -1175,11 +1182,11 @@ void AzCommon::pin_setup() {
     nubkey_setting_data nub_data;
 
     for (i=0; i<col_len; i++) {
-        if (!AZ_DEBUG_MODE || (col_list[i] != 1 && col_list[i] != 3)) pinMode(col_list[i], OUTPUT);
+        pinMode(col_list[i], OUTPUT);
     }
     // row で定義されているピンを全てinputにする
     for (i=0; i<row_len; i++) {
-        if (!AZ_DEBUG_MODE || (row_list[i] != 1 && row_list[i] != 3)) pinMode(row_list[i], INPUT_PULLUP);
+        pinMode(row_list[i], INPUT_PULLUP);
     }
     // direct(スイッチ直接続)で定義されているピンを全てinputにする
     for (i=0; i<direct_len; i++) {
@@ -1211,6 +1218,10 @@ void AzCommon::pin_setup() {
 
     // キー数の計算
     key_input_length = (col_len * row_len) + direct_len + touch_len + hall_len;
+    if (read_type) {
+        // ダブルマトリックス の場合COL×ROWが2倍になる
+        key_input_length += col_len * row_len;
+    }
 
     // Nubkey 初期化
     nubkey_status = 0;
@@ -1982,17 +1993,41 @@ void AzCommon::key_read(void) {
         n++;
     }
     // マトリックス入力の取得
+    if (read_type) {
+        // ダブルマトリックスの場合ピンの初期化
+        for (i=0; i<col_len; i++) pinMode(col_list[i], OUTPUT); // col ピンを全てoutputにする
+        for (i=0; i<row_len; i++) pinMode(row_list[i], INPUT_PULLUP); // row を全てinputにする
+    }
+    // シングルマトリックス
     for (i=0; i<col_len; i++) {
         // 対象のcolピンのみ lowにする
         for (j=0; j<col_len; j++) {
-            if (i == j) { s = 0; } else { s = 1; }
-            if (!AZ_DEBUG_MODE || (col_list[j] != 1 && col_list[j] != 3)) digitalWrite(col_list[j], s);
+            digitalWrite(col_list[j], (i != j));
         }
         delayMicroseconds(50);
         // row の分キー入力チェック
         for (j=0; j<row_len; j++) {
             input_key[n] = !digitalRead(row_list[j]);
             n++;
+        }
+    }
+    // ダブルマトリックスの場合col row反転して読み込み
+    if (read_type) {
+        // ダブルマトリックスの場合ピンの初期化
+        for (i=0; i<col_len; i++) pinMode(col_list[i], INPUT_PULLUP); // col ピンを全てoutputにする
+        for (i=0; i<row_len; i++) pinMode(row_list[i], OUTPUT); // row を全てinputにする
+        // シングルマトリックス
+        for (i=0; i<row_len; i++) {
+            // 対象のrowピンのみ lowにする
+            for (j=0; j<row_len; j++) {
+                digitalWrite(row_list[j], (i != j));
+            }
+            delayMicroseconds(50);
+            // col の分キー入力チェック
+            for (j=0; j<col_len; j++) {
+                input_key[n] = !digitalRead(col_list[j]);
+                n++;
+            }
         }
     }
     // Nubkey 読み込み

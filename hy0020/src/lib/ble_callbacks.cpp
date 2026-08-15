@@ -500,7 +500,7 @@ void HidrawCallbackExec(int data_length) {
 				} else {
 					send_buf[s] = send_buf[s] << 1;
 				}
-				if (s > 31) break;
+				if (s > OUTPUT_REPORT_RAW_MAX_LEN - 1) break;
 				if (common_cls.input_key[i]) send_buf[s]++;
 				j++;
 			}
@@ -591,6 +591,9 @@ void HidrawCallbackExec(int data_length) {
 				row_list[i] = remap_buf[m];
 				m++;
 			}
+			// マトリックスタイプ
+			read_type = remap_buf[m];
+			m++;
 			// キー数計算
 			common_cls.pin_setup();
 			// レスポンスデータ作成

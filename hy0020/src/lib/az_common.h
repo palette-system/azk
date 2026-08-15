@@ -331,6 +331,7 @@ extern short *direct_list;
 extern short *touch_list;
 extern short *hall_list;
 extern short *hall_offset;
+extern short read_type;
 
 // 入力ピン情報 I2C
 extern short ioxp_sda;

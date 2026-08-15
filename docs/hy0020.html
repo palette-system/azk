@@ -38,16 +38,16 @@ nrfutil.ajax_array_buffer = function(src) {
 };
 
 nrfutil.write = async function(zip_uri) {
-      // シリアルポート選択
+    // シリアルポートオブジェクト用意
     var transport = new DfuTransportSerial({
         baudRate: 115200,
         flowControl: false,
         singleBank: false
     });
 
-    // シリアルポートオープン
+    // シリアルポート接続
     // シリアルポート選択のウィンドウが出て選択する
-    // (このメソッドはバックエンドで動き続けないといけないので非同期)
+    // (このメソッドはバックエンドで動き続けないといけないので非同期で実行)
     transport.open();
 
     // 接続されるまで待つ
@@ -63,7 +63,7 @@ nrfutil.write = async function(zip_uri) {
         return;
     }
 
-    // DFU初期化
+    // DFUオブジェクト用意
     var dfuInstance = new Dfu(firmwareData, transport);
     
     // ZIP 解凍
@@ -82,7 +82,7 @@ nrfutil.write = async function(zip_uri) {
 <img src="./img/hy0020_write.png" width="537" height="275"><br>
 <br><br>
 <h2>ファームウェア書き込み</h2>
-<input type="button" value="書き込み" onClick="JavaScript:nrfutil.write('./data/hy0020.ino.zip');"><br>
+<input type="button" value="書き込み" onClick="JavaScript:nrfutil.write('./data/hy0020.ino.zip?1');"><br>
 <div id="progress-container"><div id="status-message">　</div></div>
 <div style="height: 150px; overflow-y: auto;width: 700px; background-color: black; color: #7ce5b5;" id="console"></div>
 <br><br>
