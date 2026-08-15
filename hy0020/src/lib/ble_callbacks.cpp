@@ -8,6 +8,11 @@
 /** HID RAW コールバック用 クラス */
 /* ====================================================================================================================== */
 
+static int _lfs_count(void *p, lfs_block_t block) {
+  (void) block;
+  *(size_t *)p += 1;
+  return 0;
+};
 
 // ステップ分受信したか確認
 int check_step() {
@@ -347,15 +352,22 @@ void HidrawCallbackExec(int data_length) {
 		}
 		case id_get_disk_info: {
 			// 0x39 SPIFFSの容量を返す
+			// ここのコードをマネした： https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Adafruit_LittleFS/src/Adafruit_LittleFS.cpp#L258-L268
 			send_buf[0] = id_get_disk_info; // 結果の返すコマンド
 			// spiffs の容量
-			m = 0;
+			lfs_t *f;
+			f = InternalFS._getFS();
+			m = f->cfg->block_count * f->cfg->block_size;
 			send_buf[1] = ((m >> 24) & 0xff);
 			send_buf[2] = ((m >> 16) & 0xff);
 			send_buf[3] = ((m >> 8) & 0xff);
 			send_buf[4] = (m & 0xff);
 			// spiffs の使用容量
-			m = 0;
+			InternalFS._lockFS();
+			size_t block_used = 0;
+			lfs_traverse(f, _lfs_count, &block_used);
+			InternalFS._unlockFS();
+			m = block_used * f->cfg->block_size;
 			send_buf[5] = ((m >> 24) & 0xff);
 			send_buf[6] = ((m >> 16) & 0xff);
 			send_buf[7] = ((m >> 8) & 0xff);
