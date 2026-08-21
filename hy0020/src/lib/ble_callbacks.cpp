@@ -2,10 +2,16 @@
 #include "Arduino.h"
 #include "ble_callbacks.h"
 
+// HID キーボード
+BLEDis bledis; // BLE 情報サービス
+BLEHidAdafruit blehid; // キーボードサービス
+BLEUart bleuart; // uart over ble
 
+
+uint8_t *check_addr;
 
 /* ====================================================================================================================== */
-/** HID RAW コールバック用 クラス */
+/** コールバック用共通 関数 */
 /* ====================================================================================================================== */
 
 static int _lfs_count(void *p, lfs_block_t block) {
@@ -23,10 +29,39 @@ int check_step() {
 	return r;
 };
 
+// アドレス設定が無いか確認
+bool addr_is_none(uint8_t *addr_a) {
+  short i;
+  for (i=0; i<BLE_GAP_ADDR_LEN; i++) {
+    if (addr_a[i] != 0) return false;
+  }
+  return true;
+}
+
+// アドレス２つ比較
+bool addr_check(uint8_t *addr_a, uint8_t *addr_b) {
+  short i;
+  for (i=0; i<BLE_GAP_ADDR_LEN; i++) {
+    if (addr_a[i] != addr_b[i]) return false;
+  }
+  return true;
+}
+
+// アドレスコピー
+void addr_copy(uint8_t *addr_a, uint8_t *addr_b) {
+  short i;
+  for (i=0; i<BLE_GAP_ADDR_LEN; i++) {
+    addr_a[i] = addr_b[i];
+  }
+}
+
+/* ====================================================================================================================== */
+/** HID RAW コールバック用 クラス */
+/* ====================================================================================================================== */
+
 void HidrawCallbackExec(int data_length) {
 	int h, i, j, k, l, m, s, o, p, x;
     uint8_t *command_id   = &(remap_buf[0]);
-    uint8_t *command_data = &(remap_buf[1]);
 	tracktall_pim447_data pim447_data_obj;
 	trackpad_cst816_data cst816_data_obj;
 
@@ -36,79 +71,7 @@ void HidrawCallbackExec(int data_length) {
 	}
 	
 	switch (*command_id) {
-		case id_get_keyboard_value: { // 0x02 キーボードの情報を送る
-			switch (command_data[0]) {
-				case id_uptime: { // 0x01 起動してからどれくらい経ったか
-					break;
-				}
-				case id_layout_options: { // 0x02 レイアウトオプション（？）
-					remap_buf[2] = 0x00;
-					remap_buf[3] = 0x00;
-					remap_buf[4] = 0x00;
-					remap_buf[5] = 0x00;
-					break;
-				}
-				case id_switch_matrix_state: { // 0x03 スイッチの状態(入力テスト用)
-					for (i=2; i<data_length; i++) remap_buf[i] = 0x00;
-					m = 2;
-					for (i=0; i<key_input_length; i++) {
-						remap_buf[m] |= (common_cls.input_key[i])? 1: 0 << (i % 8);
-						if ((i %8) == 7) m++;
-					}
-					remap_input_test = 50;
-					break;
-				}
-			}
-			break;
-		}
-		case id_dynamic_keymap_set_keycode: { // 0x05 設定した内容を保存
-			// m = (remap_buf[1] * key_max * 2) + (remap_buf[3] * 2);
-			// setting_remap[m] = remap_buf[4];
-			// setting_remap[m + 1] = remap_buf[5];
-			remap_change_flag = 1;
-			break;
-		}
-		case id_dynamic_keymap_reset: { // 0x06 キーマップリセット とりあえず何もしない
-			break;
-		}
-		case id_dynamic_keymap_macro_get_buffer_size: { // 0x0D マクロキー用のバッファサイズ
-			// uint16_t size   = dynamic_keymap_macro_get_buffer_size();
-			m = 0;
-			remap_buf[1] = (m >> 8) & 0xFF;
-            remap_buf[2] = m & 0xFF;
-			break;
-		}
-        case id_dynamic_keymap_macro_get_count: { // 0x0C マクロキーを登録できる数
-            remap_buf[1] = 0x00; // dynamic_keymap_macro_get_count();
-            break;
-        }
-        case id_dynamic_keymap_macro_get_buffer: { // 0x0E マクロキーデータを送る
-            // uint16_t offset = (command_data[0] << 8) | command_data[1];
-            // uint16_t size   = command_data[2];  // size <= 28
-            // dynamic_keymap_macro_get_buffer(offset, size, &command_data[3]);
-            remap_buf[4] = 0x00;
-            break;
-        }
-        case id_dynamic_keymap_macro_set_buffer: { // 0x0F マクロキーデータを保存
-            // uint16_t offset = (command_data[0] << 8) | command_data[1];
-            // uint16_t size   = command_data[2];  // size <= 28
-            // dynamic_keymap_macro_set_buffer(offset, size, &command_data[3]);
-            break;
-        }
-		case id_dynamic_keymap_get_layer_count: { // 0x11 レイヤー数を送る
-			// remap_buf[1] = layer_max;
-			remap_buf[1] = 1;
-			break;
-		}
-		case id_dynamic_keymap_get_buffer: { // 0x12 設定データを送る(レイヤー×ROW×COL×2)
-			uint16_t r_offset = (command_data[0] << 8) | command_data[1];
-			uint16_t r_size   = command_data[2];  // size <= 28
-			for (i=0; i<r_size; i++) {
-				// remap_buf[4 + i] = setting_remap[r_offset + i];
-				remap_buf[4 + i] = 0x00;
-			}
-			break;
-		}
+
 
 
 		case id_get_file_start: { // 0x30 ファイル取得開始
@@ -351,7 +314,7 @@ void HidrawCallbackExec(int data_length) {
 			return;
 		}
 		case id_get_disk_info: {
-			// 0x39 SPIFFSの容量を返す
+			// 0x39 SPIFFSの容量を返す(ブロック数(128)ごとの数値)
 			// ここのコードをマネした： https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Adafruit_LittleFS/src/Adafruit_LittleFS.cpp#L258-L268
 			send_buf[0] = id_get_disk_info; // 結果の返すコマンド
 			// spiffs の容量
@@ -388,7 +351,6 @@ void HidrawCallbackExec(int data_length) {
 			// IOエキスパンダからキーの読み取り
 			uint8_t rows[8]; // rowのピン
 			uint16_t out_mask; // rowのピンを立てたマスク
-			bool sa, sb;
 			x = remap_buf[1]; // エキスパンダのアドレス(0～7)
 			// 既に使用しているIOエキスパンダなら読み込みステータス0で返す
 			if (ioxp_hash[x] == 1) {
@@ -670,8 +632,8 @@ void HidrawCallbackExec(int data_length) {
 		case id_get_serial_setting: {
 			// シリアル通信(赤外線)のセッティング情報取得
 			send_buf[0] = id_get_serial_setting;
-			for (i=1; i<(sizeof(seri_setting)+1); i++) {
-				send_buf[i] = seri_setting[i-1];
+			for (i=1; i<12; i++) {
+				send_buf[i+1] = seri_setting[i];
 			}
 			while (i<OUTPUT_REPORT_RAW_MAX_LEN) { send_buf[i] = 0x00; i++; }
 			return;
@@ -700,6 +662,46 @@ void HidrawCallbackExec(int data_length) {
 			return;
 
 		}
+		case id_ble_uart_list_start: {
+			// BLE Uart のアドバタイズしている端末のリストを返す
+			send_buf[0] = id_ble_uart_list_start; // BLE Uart リスト
+			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+			// スプリット：親 意外はスキャンできない
+            if (ble_type != 1) return;
+			// スキャン開始
+			save_file_data = (uint8_t *)malloc(256); // レスポンスJSONを格納するバッファを確保
+			check_addr = (uint8_t *)malloc(20 * BLE_GAP_ADDR_LEN); // 同じアドレスの端末をスキャンしないためのリスト
+			memset(save_file_data, 0, 256);
+			memset(check_addr, 0, 20 * BLE_GAP_ADDR_LEN);
+			strcat((char*)save_file_data, "{\"list\":[");
+			// アドバタイズ中の端末をスキャン
+            Bluefruit.Scanner.start(0);
+			return;
+
+		}
+		case id_ble_uart_list: {
+			// スプリット：親 意外はスキャンできない
+            if (ble_type != 1) {
+			    send_buf[0] = id_ble_uart_list; // BLE Uart リスト
+			    for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
+				memset(save_file_data, 0, 16);
+				strcat((char*)save_file_data, "{\"list\":[]}");
+				return;
+			}
+			Bluefruit.Scanner.stop();
+			strcat((char*)save_file_data, "]}");
+			save_file_length = strlen((char*)save_file_data); // 作ったレスポンスJSONのサイズを取得
+			free(check_addr);
+			send_buf[0] = id_ble_uart_list; // BLE Uart リスト
+			send_buf[1] = ((save_file_length >> 24) & 0xff);
+			send_buf[2] = ((save_file_length >> 16) & 0xff);
+			send_buf[3] = ((save_file_length >> 8) & 0xff);
+			send_buf[4] = (save_file_length & 0xff);
+			for (i=5; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+			return;
+
+		}
 		default: {
 			send_buf[0] = 0xFF;
 			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
@@ -708,3 +710,47 @@ void HidrawCallbackExec(int data_length) {
         }
 	}
 }
+
+// BLE クライアント スキャン コールバック
+void scan_callback(ble_gap_evt_adv_report_t* report)
+{
+  short i;
+  for (i=0; i<120; i+=6) {
+    if (addr_check(&check_addr[i], report->peer_addr.addr)) {
+      return;
+    }
+    if (addr_is_none(&check_addr[i])) break;
+  }
+  if (i >= 119) return;
+  if (strlen((char*)save_file_data) > 16) strcat((char*)save_file_data, ",");
+  addr_copy(&check_addr[i], report->peer_addr.addr);
+  Bluefruit.Central.connect(report);
+}
+
+
+// BLE Client connect callback
+void client_connect_callback(uint16_t conn_handle)
+{
+  char json_buf[128];
+  char central_name[32] = { 0 };
+  BLEConnection* conn = Bluefruit.Connection(conn_handle);
+  ble_gap_addr_t addr = conn->getPeerAddr();
+  conn->getPeerName(central_name, sizeof(central_name));
+  sprintf(json_buf, "{\"addr\":[%d,%d,%d,%d,%d,%d],\"name\":\"%s\"}",
+      addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4], addr.addr[5], central_name);
+  strcat((char*)save_file_data, json_buf);
+
+  Bluefruit.disconnect(conn_handle);
+}
+
+/**
+ * BLE Client Callback invoked when a connection is dropped
+ * @param conn_handle
+ * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
+ */
+void client_disconnect_callback(uint16_t conn_handle, uint8_t reason)
+{
+  (void) conn_handle;
+  (void) reason;
+}
+

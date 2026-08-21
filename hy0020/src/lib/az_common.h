@@ -282,6 +282,7 @@ class AzCommon
 };
 
 // hid
+extern int8_t ble_type; // 0 = 1コア / 1 = 2コア(親) / 2 = 2コア(小)
 extern uint16_t hid_vid;
 extern uint16_t hid_pid;
 extern uint16_t hid_conn_handle; // ペアリングしている機器のハンドルID

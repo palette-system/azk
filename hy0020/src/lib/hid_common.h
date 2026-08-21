@@ -53,6 +53,8 @@ enum via_command_id {
     id_get_serial_input                     = 0x46,
     id_get_serial_setting                   = 0x47,
     id_get_cst816                           = 0x48,
+    id_ble_uart_list_start                  = 0x49,
+    id_ble_uart_list                        = 0x50,
 
     // ステータス取得
     id_get_firmware_status                  = 0x60,

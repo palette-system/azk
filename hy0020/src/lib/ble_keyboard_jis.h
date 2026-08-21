@@ -7,10 +7,6 @@
 #include <bluefruit.h>
 #include "CustamService.h"
 
-// HID 
-extern BLEDis bledis;
-extern BLEHidAdafruit blehid;
-extern BLECustam blecus;
 
 
 // BLEキーボードクラス

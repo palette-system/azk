@@ -1,6 +1,8 @@
 #ifndef BLECUSTAM_H_
 #define BLECUSTAM_H_
 
+#include <bluefruit.h>
+
 #include "bluefruit_common.h"
 
 #include "BLECharacteristic.h"
@@ -17,6 +19,9 @@
 extern BLECharacteristic *_characteristic_input;
 extern BLECharacteristic *_characteristic_output;
 
+void prph_bleuart_rx_callback(uint16_t conn_handle);
+
+
 class BLECustam : public BLEService
 {
   public:
@@ -31,6 +36,8 @@ class BLECustam : public BLEService
     static void onCommandWritten(uint16_t conn_hdl, BLECharacteristic* characteristic, uint8_t* data, uint16_t data_length);
 };
 
+
+extern BLECustam blecus; // 送受信用サービス
 
 
 #endif /* BLECUSTAM_H_ */

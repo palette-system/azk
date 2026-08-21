@@ -19,6 +19,7 @@ uint8_t led_num_length;
 uint8_t key_matrix_length;
 
 // hid
+int8_t ble_type; // 0 = 1コア / 1 = 2コア(親) / 2 = 2コア(小)
 uint16_t hid_vid;
 uint16_t hid_pid;
 uint16_t hid_conn_handle = 0; // ペアリングしている機器のハンドルID
@@ -373,6 +374,11 @@ void AzCommon::load_setting_json() {
 
     // HID 設定
     String hidstr;
+    if (setting_obj["ble"].is<int>()) {
+        ble_type = setting_obj["ble"].as<signed int>();
+    } else {
+        ble_type = 0;
+    }
     if (setting_obj["vendorId"].is<String>()) {
         hidstr = setting_obj["vendorId"].as<String>();
         hid_vid = (uint16_t) strtol(&hidstr[2], NULL, 16);

@@ -3,12 +3,6 @@
 #include "ble_keyboard_jis.h"
 
 
-// HID 
-BLEDis bledis;
-BLEHidAdafruit blehid;
-BLECustam blecus;
-
-
 // コンストラクタ
 BleKeyboardJIS::BleKeyboardJIS(void)
 {
@@ -18,10 +12,27 @@ BleKeyboardJIS::BleKeyboardJIS(void)
 // BLEキーボードとして処理開始
 void BleKeyboardJIS::begin(char *deviceName)
 {
-    Bluefruit.begin();
+    if (ble_type == 1) { // スプリット：親
+      Bluefruit.begin(1, 1); // HID (1 接続) , BLE クライアント(1 接続)
+    } else {
+      Bluefruit.begin(1); // HID (1 接続)
+    }
     Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
     Bluefruit.setName(deviceName);
-  
+
+    if (ble_type == 1) { // スプリット：親
+      // BLE クライアント コールバック設定
+      Bluefruit.Central.setConnectCallback(client_connect_callback);
+      Bluefruit.Central.setDisconnectCallback(client_disconnect_callback);
+
+      // BLE クライアント 設定
+      Bluefruit.Scanner.setInterval(160, 80);       // in units of 0.625 ms
+      Bluefruit.Scanner.setRxCallback(scan_callback);
+      Bluefruit.Scanner.filterUuid(BLEUART_UUID_SERVICE);
+      Bluefruit.Scanner.restartOnDisconnect(true);
+      Bluefruit.Scanner.useActiveScan(false);       // Don't request scan response data
+    }
+
     // Configure and Start Device Information Service
     bledis.setManufacturer("AZKEYBOARD");
     bledis.setModel("AZK");
@@ -49,12 +60,23 @@ void BleKeyboardJIS::begin(char *deviceName)
      * up to 11.25 ms. Therefore BLEHidAdafruit::begin() will try to set the min and max
      * connection interval to 11.25  ms and 15 ms respectively for best performance.
      */
-    blehid.begin();
+    if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+      blehid.begin();
   
-    // Set callback for set LED from central
-    blehid.setKeyboardLedCallback(set_keyboard_led);
+      // Set callback for set LED from central
+      blehid.setKeyboardLedCallback(set_keyboard_led);
+    }
   
-    blecus.begin();
+    if (ble_type == 2) { // スプリット：小
+      // Configure and Start BLE Uart Service
+      bleuart.begin();
+      bleuart.setRxCallback(prph_bleuart_rx_callback);
+    }
+
+    if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+      blecus.begin();
+    }
+
   
     /* Set connection interval (min, max) to your perferred value.
      * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
@@ -73,11 +95,20 @@ void BleKeyboardJIS::startAdv(void)
   // Advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
-  Bluefruit.Advertising.addAppearance(BLE_APPEARANCE_HID_KEYBOARD);
+  if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+    Bluefruit.Advertising.addAppearance(BLE_APPEARANCE_HID_KEYBOARD);
+  }
   
   // Include BLE HID service
-  Bluefruit.Advertising.addService(blehid);
-  Bluefruit.Advertising.addService(blecus);
+  if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+    Bluefruit.Advertising.addService(blehid); // HID
+  }
+  if (ble_type == 2) { // スプリット：小
+    Bluefruit.Advertising.addService(bleuart); // Uart
+  }
+  if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+    Bluefruit.Advertising.addService(blecus); // Custam
+  }
 
   // There is enough room for the dev name in the advertising packet
   Bluefruit.Advertising.addName();
@@ -91,10 +122,10 @@ void BleKeyboardJIS::startAdv(void)
    * For recommended advertising interval
    * https://developer.apple.com/library/content/qa/qa1931/_index.html   
    */
-  Bluefruit.Advertising.restartOnDisconnect(true);
+  Bluefruit.Advertising.restartOnDisconnect(true); // 接続が切れたら再度アドバタイズ開始する
   Bluefruit.Advertising.setInterval(32, 244);    // in unit of 0.625 ms
   Bluefruit.Advertising.setFastTimeout(30);      // number of seconds in fast mode
-  Bluefruit.Advertising.start(0);                // 0 = Don't stop advertising after n seconds
+  Bluefruit.Advertising.start(0);                // 起動してから何秒間接続先を探すか 0はずっと探す
 }
 
 /**
@@ -327,7 +358,6 @@ size_t BleKeyboardJIS::press_raw(unsigned short k)
 
 size_t BleKeyboardJIS::press_set(uint8_t k)
 {
-  uint8_t i;
   unsigned short kk;
   kk = _asciimap[k];
   if (!kk) {
