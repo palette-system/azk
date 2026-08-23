@@ -266,6 +266,7 @@ class AzCommon
         void nubkey_position_read(nubkey_option *opt); // Nubkey ポジション設定中動作
         void key_read(); // 現在のキーの状態を取得
         void key_old_copy(); // 現在のキーの状態を過去用配列にコピー
+        bool key_changed(); // キーの状態が変化したかチェック
         uint8_t *input_key_analog; // 今入力中のアナログ値
         char *analog_stroke_most; // 最も押し込んだ時のアナログ値
         char *input_key; // 今入力中のキー(ステータス)
@@ -282,7 +283,10 @@ class AzCommon
 };
 
 // hid
-extern int8_t ble_type; // 0 = 1コア / 1 = 2コア(親) / 2 = 2コア(小)
+extern int8_t ble_type; // 0 = シングル / 1 = 分割(親) / 2 = 分割(小)
+extern int8_t child_addr_flag; // 分割子供アドレス設定の有無
+extern uint8_t child_addr[6]; // 分割子供アドレス
+extern int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
 extern uint16_t hid_vid;
 extern uint16_t hid_pid;
 extern uint16_t hid_conn_handle; // ペアリングしている機器のハンドルID
@@ -441,9 +445,6 @@ extern AzCommon common_cls;
 // 設定JSONオブジェクト
 extern JsonObject setting_obj;
 
-
-// remap用 キー入力テスト中フラグ
-extern uint16_t  remap_input_test;
 
 // キーが押された時の設定
 extern uint16_t setting_length;

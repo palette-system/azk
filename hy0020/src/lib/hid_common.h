@@ -59,6 +59,9 @@ enum via_command_id {
     // ステータス取得
     id_get_firmware_status                  = 0x60,
 
+    // 分割キーボード用
+    id_split_send_key                       = 0x70,
+
     // システム用
     id_unhandled                            = 0xFF,
 };

@@ -7,6 +7,9 @@ BLEDis bledis; // BLE 情報サービス
 BLEHidAdafruit blehid; // キーボードサービス
 BLEUart bleuart; // uart over ble
 
+// HID BLE クライアント
+BLEClientUart clientUart; // bleuart client
+
 
 uint8_t *check_addr;
 
@@ -666,13 +669,16 @@ void HidrawCallbackExec(int data_length) {
 			// BLE Uart のアドバタイズしている端末のリストを返す
 			send_buf[0] = id_ble_uart_list_start; // BLE Uart リスト
 			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
-			// スプリット：親 意外はスキャンできない
+			// 分割：親 意外はスキャンできない
             if (ble_type != 1) return;
+			// 子供アドレスが設定されていたらスキャンできない
+			if (child_addr_flag) return;
 			// スキャン開始
+			ble_scan_flag = 1; // スキャン中フラグON
 			save_file_data = (uint8_t *)malloc(256); // レスポンスJSONを格納するバッファを確保
 			check_addr = (uint8_t *)malloc(20 * BLE_GAP_ADDR_LEN); // 同じアドレスの端末をスキャンしないためのリスト
-			memset(save_file_data, 0, 256);
-			memset(check_addr, 0, 20 * BLE_GAP_ADDR_LEN);
+			memset(save_file_data, 0x00, 256);
+			memset(check_addr, 0x00, 20 * BLE_GAP_ADDR_LEN);
 			strcat((char*)save_file_data, "{\"list\":[");
 			// アドバタイズ中の端末をスキャン
             Bluefruit.Scanner.start(0);
@@ -680,16 +686,17 @@ void HidrawCallbackExec(int data_length) {
 
 		}
 		case id_ble_uart_list: {
-			// スプリット：親 意外はスキャンできない
-            if (ble_type != 1) {
+			// 分割：親 意外はスキャンできない / 子供アドレスが設定されていたらスキャンできない
+            if (ble_type != 1 || child_addr_flag) {
 			    send_buf[0] = id_ble_uart_list; // BLE Uart リスト
 			    for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
-				memset(save_file_data, 0, 16);
+				memset(save_file_data, 0x00, 16);
 				strcat((char*)save_file_data, "{\"list\":[]}");
 				return;
 			}
 			Bluefruit.Scanner.stop();
+			ble_scan_flag = 0; // スキャン中フラグOFF
 			strcat((char*)save_file_data, "]}");
 			save_file_length = strlen((char*)save_file_data); // 作ったレスポンスJSONのサイズを取得
 			free(check_addr);
@@ -711,37 +718,65 @@ void HidrawCallbackExec(int data_length) {
 	}
 }
 
-// BLE クライアント スキャン コールバック
+// BLE クライアント アドバタイズ端末を発見した時の スキャン コールバック
 void scan_callback(ble_gap_evt_adv_report_t* report)
 {
   short i;
-  for (i=0; i<120; i+=6) {
-    if (addr_check(&check_addr[i], report->peer_addr.addr)) {
-      return;
-    }
-    if (addr_is_none(&check_addr[i])) break;
+  if (ble_scan_flag) {
+    // アドバタイズ端末スキャン中
+	// すでにスキャンした端末かどうかチェック
+	for (i=0; i<120; i+=6) {
+		if (addr_check(&check_addr[i], report->peer_addr.addr)) {
+			return;
+		}
+		if (addr_is_none(&check_addr[i])) break;
+	}
+	if (i >= 119) return;
+	// 2端末以降の場合はスキャン結果にカンマを追加
+	if (strlen((char*)save_file_data) > 16) strcat((char*)save_file_data, ",");
+	// スキャンしたよリストにアドレスを追加
+	addr_copy(&check_addr[i], report->peer_addr.addr);
+	Bluefruit.Central.connect(report); // 接続要求
+
+  } else if (child_addr_flag) {
+	// 子供端末であれば接続要求する
+	if (addr_check(child_addr, report->peer_addr.addr)) {
+		Bluefruit.Central.connect(report); // 接続要求
+	}
   }
-  if (i >= 119) return;
-  if (strlen((char*)save_file_data) > 16) strcat((char*)save_file_data, ",");
-  addr_copy(&check_addr[i], report->peer_addr.addr);
-  Bluefruit.Central.connect(report);
 }
 
 
-// BLE Client connect callback
+// BLE Client コネクションが確立した時のコールバック
 void client_connect_callback(uint16_t conn_handle)
 {
-  char json_buf[128];
-  char central_name[32] = { 0 };
-  BLEConnection* conn = Bluefruit.Connection(conn_handle);
-  ble_gap_addr_t addr = conn->getPeerAddr();
-  conn->getPeerName(central_name, sizeof(central_name));
-  sprintf(json_buf, "{\"addr\":[%d,%d,%d,%d,%d,%d],\"name\":\"%s\"}",
-      addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4], addr.addr[5], central_name);
-  strcat((char*)save_file_data, json_buf);
+  if (ble_scan_flag) {
+    // アドバタイズ端末スキャン中
+	char json_buf[128];
+	char central_name[32] = { 0 };
+	BLEConnection* conn = Bluefruit.Connection(conn_handle); // 接続情報取得
+	ble_gap_addr_t addr = conn->getPeerAddr(); // 接続アドレス取得
+	conn->getPeerName(central_name, sizeof(central_name)); // 接続端末の名前取得
+	// スキャン結果にJSONを追加
+	sprintf(json_buf, "{\"addr\":[%d,%d,%d,%d,%d,%d],\"name\":\"%s\"}",
+		addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4], addr.addr[5], central_name);
+	strcat((char*)save_file_data, json_buf);
+	// 接続終了
+	Bluefruit.disconnect(conn_handle);
 
-  Bluefruit.disconnect(conn_handle);
+  } else {
+	// Uart サービスがあれば Uart 初期化
+	if (clientUart.discover(conn_handle)) {
+		clientUart.enableTXD();
+	} else {
+		Bluefruit.disconnect(conn_handle);
+	}
+	// 接続で来たらスキャン終了
+	Bluefruit.Scanner.stop();
+
+  }
 }
+
 
 /**
  * BLE Client Callback invoked when a connection is dropped
@@ -754,3 +789,11 @@ void client_disconnect_callback(uint16_t conn_handle, uint8_t reason)
   (void) reason;
 }
 
+
+// 分割キーボードから送られてきたコマンドを取得した時のコールバック
+void bleuart_rx_callback(BLEClientUart& uart_svc)
+{  
+  while (uart_svc.available()) {
+    // Serial.print( (char) uart_svc.read() );
+  }
+}

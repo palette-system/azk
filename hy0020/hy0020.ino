@@ -60,6 +60,12 @@ void setup()
 void loop() 
 {
     // キーボードモード用ループ
-    azkb.loop_exec();
+    if (ble_type == 2) {
+        // 分割：子 の場合
+        azkb.loop_exec_child();
+    } else {
+        // シングル / 分割：親 の場合
+        azkb.loop_exec();
+    }
 }
 

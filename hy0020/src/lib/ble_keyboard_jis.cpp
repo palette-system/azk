@@ -12,7 +12,7 @@ BleKeyboardJIS::BleKeyboardJIS(void)
 // BLEキーボードとして処理開始
 void BleKeyboardJIS::begin(char *deviceName)
 {
-    if (ble_type == 1) { // スプリット：親
+    if (ble_type == 1) { // 分割：親
       Bluefruit.begin(1, 1); // HID (1 接続) , BLE クライアント(1 接続)
     } else {
       Bluefruit.begin(1); // HID (1 接続)
@@ -20,7 +20,14 @@ void BleKeyboardJIS::begin(char *deviceName)
     Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
     Bluefruit.setName(deviceName);
 
-    if (ble_type == 1) { // スプリット：親
+    if (ble_type == 1) { // 分割：親
+      // Init BLE Central Uart Serivce
+      clientUart.begin();
+      clientUart.setRxCallback(bleuart_rx_callback);
+
+      // Increase Blink rate to different from PrPh advertising mode
+      // Bluefruit.setConnLedInterval(250);
+
       // BLE クライアント コールバック設定
       Bluefruit.Central.setConnectCallback(client_connect_callback);
       Bluefruit.Central.setDisconnectCallback(client_disconnect_callback);
@@ -31,6 +38,11 @@ void BleKeyboardJIS::begin(char *deviceName)
       Bluefruit.Scanner.filterUuid(BLEUART_UUID_SERVICE);
       Bluefruit.Scanner.restartOnDisconnect(true);
       Bluefruit.Scanner.useActiveScan(false);       // Don't request scan response data
+
+      // 子供アドレスが設定されていればスキャン開始
+      if (child_addr_flag) {
+        Bluefruit.Scanner.start(0);
+      }
     }
 
     // Configure and Start Device Information Service
@@ -60,20 +72,20 @@ void BleKeyboardJIS::begin(char *deviceName)
      * up to 11.25 ms. Therefore BLEHidAdafruit::begin() will try to set the min and max
      * connection interval to 11.25  ms and 15 ms respectively for best performance.
      */
-    if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+    if (ble_type == 0 || ble_type == 1) { // シングル / 分割：親
       blehid.begin();
   
       // Set callback for set LED from central
       blehid.setKeyboardLedCallback(set_keyboard_led);
     }
   
-    if (ble_type == 2) { // スプリット：小
+    if (ble_type == 2) { // 分割：小
       // Configure and Start BLE Uart Service
       bleuart.begin();
       bleuart.setRxCallback(prph_bleuart_rx_callback);
     }
 
-    if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+    if (ble_type == 0 || ble_type == 1) { // シングル / 分割：親
       blecus.begin();
     }
 
@@ -95,18 +107,18 @@ void BleKeyboardJIS::startAdv(void)
   // Advertising packet
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
   Bluefruit.Advertising.addTxPower();
-  if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+  if (ble_type == 0 || ble_type == 1) { // シングル / 分割：親
     Bluefruit.Advertising.addAppearance(BLE_APPEARANCE_HID_KEYBOARD);
   }
   
   // Include BLE HID service
-  if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+  if (ble_type == 0 || ble_type == 1) { // シングル / 分割：親
     Bluefruit.Advertising.addService(blehid); // HID
   }
-  if (ble_type == 2) { // スプリット：小
+  if (ble_type == 2) { // 分割：小
     Bluefruit.Advertising.addService(bleuart); // Uart
   }
-  if (ble_type == 0 || ble_type == 1) { // シングル / スプリット：親
+  if (ble_type == 0 || ble_type == 1) { // シングル / 分割：親
     Bluefruit.Advertising.addService(blecus); // Custam
   }
 
@@ -444,4 +456,20 @@ void BleKeyboardJIS::setConnInterval(int interval_type)
     
 }
 
-
+// 分割：小 の入力キーを親に送る
+void BleKeyboardJIS::split_send_key()
+{
+  short i, p;
+  uint8_t send_data[12];
+  memset(send_data, 0x00, 12);
+  send_data[0] = 0x70;
+  p = 0;
+  for (i=0; i<key_input_length; i++) {
+      if (common_cls.input_key[i]) {
+        if (p<6) send_data[p+2] = i;
+        p++;
+      }
+  }
+  send_data[1] = p;
+  bleuart.write(send_data, p + 2);
+}

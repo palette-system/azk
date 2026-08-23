@@ -20,6 +20,9 @@ extern BLEDis bledis; // BLE 情報サービス
 extern BLEHidAdafruit blehid; // キーボードサービス
 extern BLEUart bleuart; // uart over ble
 
+// HID BLE クライアント
+extern BLEClientUart clientUart; // bleuart client
+
 
 // HidrawCallback
 void HidrawCallbackExec(int data_length);
@@ -28,5 +31,6 @@ void HidrawCallbackExec(int data_length);
 void scan_callback(ble_gap_evt_adv_report_t* report); // スキャン
 void client_connect_callback(uint16_t conn_handle); // コネクト
 void client_disconnect_callback(uint16_t conn_handle, uint8_t reason); // ディスコネクト
+void bleuart_rx_callback(BLEClientUart& uart_svc); // RX コールバック
 
 #endif

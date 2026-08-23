@@ -3,8 +3,6 @@
 
 #include <SoftwareSerial.h>
 
-// remap用 キー入力テスト中フラグ
-uint16_t  remap_input_test;
 
 // キーが押された時の設定
 uint16_t setting_length;
@@ -19,7 +17,10 @@ uint8_t led_num_length;
 uint8_t key_matrix_length;
 
 // hid
-int8_t ble_type; // 0 = 1コア / 1 = 2コア(親) / 2 = 2コア(小)
+int8_t ble_type; //0 = シングル / 1 = 分割(親) / 2 = 分割(小)
+int8_t child_addr_flag; // 分割子供アドレス設定の有無
+uint8_t child_addr[6]; // 分割子供アドレス
+int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
 uint16_t hid_vid;
 uint16_t hid_pid;
 uint16_t hid_conn_handle = 0; // ペアリングしている機器のハンドルID
@@ -251,6 +252,8 @@ void AzCommon::common_start() {
         press_key_list[i].layer_id = -1;
         press_key_list[i].unpress_time = -1;
     }
+    // ble アドバタイズ端末スキャンフラグ
+    ble_scan_flag = 0;
     // ioエキスパンダピン
     ioxp_sda = -1;
     ioxp_scl = -1;
@@ -270,8 +273,6 @@ void AzCommon::common_start() {
     // if (AZ_DEBUG_MODE) Serial.begin(115200);
     // aztoolで作業中かどうか
     aztool_mode_flag = 0;
-    // remap用 キー入力テスト中フラグ
-    remap_input_test = 0;
     // キーボードのステータス
     keyboard_status = 0;
     // RGBLEDのステータス
@@ -316,6 +317,8 @@ int split_num(const char *c) {
 
 // JSONデータを読み込む
 void AzCommon::load_setting_json() {
+    int i, j, k, m, n, o, p, r;
+
     // セッティングJSONを保持する領域
     JsonDocument setting_doc;
     JsonObject setting_obj;
@@ -392,6 +395,17 @@ void AzCommon::load_setting_json() {
         hid_pid = BLE_HID_PID;
     }
 
+    // 分割キーボードの子供アドレス
+    if (setting_obj["child"].is<JsonArray>() && setting_obj["child"].size() == 6) {
+        child_addr_flag = 1;
+        for (i=0; i<6; i++) {
+            child_addr[i] = setting_obj["child"][i].as<signed int>();
+        }
+    } else {
+        child_addr_flag = 0;
+        memset(child_addr, 0x00, sizeof(child_addr));
+    }
+
     // デフォルトのレイヤー番号設定
     default_layer_no = setting_obj["default_layer"].as<signed int>();
 
@@ -409,6 +423,7 @@ void AzCommon::load_setting_json() {
             hold_time = setting_obj["hold"]["time"].as<signed int>();
         }
     }
+
     // ホールセンサーのアナログ値読み取り範囲
     if (setting_obj["hall_range_min"].is<int>()) {
         hall_range_min = setting_obj["hall_range_min"].as<signed int>();
@@ -420,8 +435,8 @@ void AzCommon::load_setting_json() {
     } else {
         hall_range_max = HALL_RANGE_MAX_DEFAULT;
     }
+
     // 入力ピン情報取得
-    int i, j, k, m, n, o, p, r;
     col_len = setting_obj["keyboard_pin"]["col"].size();
     row_len = setting_obj["keyboard_pin"]["row"].size();
     direct_len = setting_obj["keyboard_pin"]["direct"].size();
@@ -2053,18 +2068,26 @@ void AzCommon::key_read(void) {
 
 // 今回の入力状態を保持
 void AzCommon::key_old_copy(void) {
-    int i;
+    short i;
     for (i=0; i<key_input_length; i++) {
         input_key_last[i] = input_key[i];
     }
 }
 
 
+// キーの状態が変化したかチェック
+bool AzCommon::key_changed(void) {
+    short i;
+    for (i=0; i<key_input_length; i++) {
+        if (input_key_last[i] != input_key[i]) return true;
+    }
+    return false;
+}
 
 
 // マウス移動リストを空にする
 void AzCommon::press_mouse_list_clean() {
-    int i;
+    short i;
     for (i=0; i<PRESS_MOUSE_MAX; i++) {
         press_mouse_list[i].key_num = -1;
         press_mouse_list[i].action_type = 0;
