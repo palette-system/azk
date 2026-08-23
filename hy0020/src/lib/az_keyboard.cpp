@@ -57,44 +57,13 @@ void AzKeyboard::key_action_exec() {
     int i;
     for (i=0; i<key_input_length; i++) {
         if (common_cls.input_key_last[i] != common_cls.input_key[i]) {
-            if (common_cls.input_key[i] == 1) {
+            if (common_cls.input_key[i]) {
                 // キーが押された
                 key_down_action(i, 0); // 押された時の動作
                 rgb_led_cls.set_led_buf(i, 1); // LED に押したよを送る
-            } else if (common_cls.input_key[i] == 2) {
-                // 2段入力の 1段目が押された
-                if (common_cls.input_key_last[i] == 3) {
-                    // 前が2段目の入力だった場合は2段目のキーを離す
-                    key_up_action(i, 0); // 離された時の動作
-                    // 1段目のキーを押す
-                    key_down_action(i, 1); // 押された時の動作
-                } else {
-                    // 前が未入力の場合はそのまま1段目のキーを押す
-                    key_down_action(i, 1); // 押された時の動作
-                    rgb_led_cls.set_led_buf(i, 1); // LED に押したよを送る
-                }
-            } else if (common_cls.input_key[i] == 3) {
-                // 2段入力の 2段目が押された
-                if (common_cls.input_key_last[i] == 2) {
-                    // 前が1段目入力だったら1段目を離す
-                    key_up_action(i, 1); // 離された時の動作
-                    // 2段目のキーを押す
-                    key_down_action(i, 0); // 押された時の動作
-                } else {
-                    // 前が未入力の場合はそのまま2段目を押す
-                    key_down_action(i, 0); // 押された時の動作
-                    rgb_led_cls.set_led_buf(i, 1); // LED に押したよを送る
-                }
-
             } else {
-                // キーは離された
-                if (common_cls.input_key_last[i] == 2) {
-                    // 前が2段入力の 1段目入力だった場合1段目を離す
-                    key_up_action(i, 1); // 離された時の動作
-                } else {
-                    // それ以外は通常のキーを離す
-                    key_up_action(i, 0); // 離された時の動作
-                }
+                // キーが離された
+                key_up_action(i, 0); // 離された時の動作
                 rgb_led_cls.set_led_buf(i, 0); // LED に離したよを送る
             }
         }
@@ -270,7 +239,7 @@ void AzKeyboard::hold_press(int hold, int key_num) {
 
 // キーが押された時の処理
 void AzKeyboard::key_down_action(int key_num, short press_type) {
-    int i, m, k, r;
+    int i, m;
     // 打鍵数カウントアップ
     common_cls.key_count[key_num]++;
     common_cls.key_count_total++;
@@ -569,8 +538,8 @@ void AzKeyboard::press_data_reset() {
         press_key_list[i].repeat_index = -1;
     }
     for (i=0; i<key_input_length; i++) {
-        common_cls.input_key_last[i] = 0;
-        common_cls.input_key[i] = 0;
+        common_cls.input_key_last[i] = false;
+        common_cls.input_key[i] = false;
     }
     bleKeyboard.releaseAll();
     press_key_all_clear = -1;

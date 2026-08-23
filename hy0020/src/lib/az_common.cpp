@@ -1300,14 +1300,14 @@ void AzCommon::pin_setup() {
     // 動作電圧チェック用ピン
     // power_read_pin = 36;
 
-    input_key = new char[key_input_length];
-    input_key_last = new char[key_input_length];
+    input_key = new bool[key_input_length];
+    input_key_last = new bool[key_input_length];
     key_count = new uint16_t[key_input_length];
     key_point = new short[key_input_length];
     // リセット
     for (i=0; i<key_input_length; i++) {
-        this->input_key[i] = 0; // 今回のキースキャンデータ
-        this->input_key_last[i] = 0; // 前回のキースキャンデータ
+        this->input_key[i] = false; // 今回のキースキャンデータ
+        this->input_key_last[i] = false; // 前回のキースキャンデータ
         this->key_count[i] = 0; // 打鍵数
         this->key_point[i] = -1; // キーごとの設定ID
     }
@@ -1372,7 +1372,7 @@ setting_key_press AzCommon::get_key_setting(int layer_id, int key_num, short pre
 tracktall_pim447_data pim447_data_old;
 
 
-int AzCommon::i2c_read(int p, i2c_option *opt, char *read_data) {
+int AzCommon::i2c_read(int p, i2c_option *opt, bool *read_data) {
     int e, i, j, k, m, n, r, x, y;
     unsigned long now_time;
     unsigned long start_time;
@@ -1772,7 +1772,7 @@ void AzCommon::serial_read() {
 }
 
 // Nubkey 読み込み
-int AzCommon::nubkey_read(int p, nubkey_option *opt, char *read_data) {
+int AzCommon::nubkey_read(int p, nubkey_option *opt, bool *read_data) {
     int r = 0;
     int a_up, a_down, a_left, a_right;
     int x, y, w, mx, my;
@@ -1785,7 +1785,7 @@ int AzCommon::nubkey_read(int p, nubkey_option *opt, char *read_data) {
         return r;
     }
     if (opt->action_type == 0) {
-        read_data[p] = 0;
+        read_data[p] = false;
         a_up = analogRead(opt->up_pin);
         a_down = analogRead(opt->down_pin);
         a_left = analogRead(opt->left_pin);
@@ -1802,7 +1802,7 @@ int AzCommon::nubkey_read(int p, nubkey_option *opt, char *read_data) {
         } else {
             // 短い時間押されていたらタップされたと判定してキーをONにする
             if (opt->enable_time > 0 && opt->enable_time < opt->tap_time) {
-                read_data[p] = 1;
+                read_data[p] = true;
             }
             opt->enable_time = 0;
         }
@@ -1826,8 +1826,8 @@ void AzCommon::nubkey_position_init() {
 
 // Nubkey ポジション設定中動作
 void AzCommon::nubkey_position_read(nubkey_option *opt) {
-    int a_up, a_down, a_left, a_right;
-    int x, y;
+    short a_up, a_down, a_left, a_right;
+    short x, y;
     a_up = analogRead(opt->up_pin);
     a_down = analogRead(opt->down_pin);
     a_left = analogRead(opt->left_pin);
@@ -1843,19 +1843,19 @@ void AzCommon::nubkey_position_read(nubkey_option *opt) {
 
 // 現在のキーの入力状態を取得
 void AzCommon::key_read(void) {
-    int a, i, j, m, n, s;
-    int act, acp, acpt, rap;
+    short a, i, j, m, n, s;
+    short act, acp, acpt, rap;
     setting_key_press *k;
     n = 0;
     // ダイレクト入力の取得
     for (i=0; i<direct_len; i++) {
-        input_key[n] = !digitalRead(direct_list[i]);
+        input_key[n] = (!digitalRead(direct_list[i]));
         n++;
     }
     // タッチ入力の取得
     for (i=0; i<touch_len; i++) {
         // タッチ機能がないESPでは常に0
-        input_key[n] = 0;
+        input_key[n] = false;
         n++;
     }
     // 磁気スイッチの取得
@@ -1880,137 +1880,15 @@ void AzCommon::key_read(void) {
         if (m > 255) m = 255;
         if (m < 0) m = 0;
         input_key_analog[i] = m;
-        if (acpt == 0) {
-            // 静的なアクチュエーションポイントとラピットトリガー
-            // 固定位置で判定
-            if (input_key_analog[i] > acp) { // アクチュエーションポイントを超えたらON
-                input_key[n] = 1;
-            } else if (input_key_analog[i] < rap) { // ラピットトリガーを下回ったらOFF
-                input_key[n] = 0;
-            } else { // 中間地点にいる場合は前のステータスを引き継ぐ
-                input_key[n] = input_key_last[n];
-            }
-
-        } else if (acpt == 1) {
-            // 動的なアクチュエーションポイントとラピットトリガー
-            // (移動距離で判定)
-            if (input_key_last[n] == 0) { // 前回が未入力
-                if (input_key_analog[i] > (analog_stroke_most[i] + acp) || input_key_analog[i] > 240) {
-                    // アクチュエーションポイントを超えたらON
-                    input_key[n] = 1;
-                    analog_stroke_most[i] = input_key_analog[i]; // ONになった位置を保持
-                } else {
-                    input_key[n] = 0; // アクチュエーションポイント超えるまではOFFのまま
-                    // 離されたらOFFになった位置を更新する
-                    if (analog_stroke_most[i] > input_key_analog[i]) {
-                        analog_stroke_most[i] = input_key_analog[i];
-                    }
-
-                }
-            } else if (input_key_last[n] == 1) { // 前回がON
-                if (input_key_analog[i] < (analog_stroke_most[i] - rap) || input_key_analog[i] < 12) { // 最も押し込んだ位置からラピットトリガー分戻ったらリセット
-                    input_key[n] = 0;
-                    analog_stroke_most[i] = input_key_analog[i]; // OFFになった位置を保持
-                } else {
-                    input_key[n] = 1; // ラピットトリガーを下回るまではONのまま
-                    // 深く押し込まれたらONになった位置を更新する
-                    if (analog_stroke_most[i] < input_key_analog[i]) {
-                        analog_stroke_most[i] = input_key_analog[i];
-                    }
-                }
-            } else {
-                input_key[n] = 0;
-            }
-
-        } else if (acpt == 2) {
-            // 2段階入力
-            if (input_key_last[n] == 0) { // 前回が未入力
-                if (input_key_analog[i] > 210) {
-                    // 2段目まで押し込まれたら2段目にする
-                    input_key[n] = 3; // 2段目ON
-                    analog_stroke_most[i] = 0; // カウンタリセット
-
-                } else if (input_key_analog[i] > 40) {
-                    // 1段目の深さの場合
-                    analog_stroke_most[i]++; // 超えたよ数をカウントしていき、5回を超えたらONにする(素早い入力の時は1段目を飛ばすため)
-                    if (analog_stroke_most[i] > 5) {
-                        input_key[n] = 2; // 1段目ON
-                    } else {
-                        input_key[n] = 0;
-                    }
-                } else {
-                    // 浅い位置にいればカウントもリセット
-                    input_key[n] = 0;
-                    analog_stroke_most[i] = 0;
-                }
-            } else if (input_key_last[n] == 2) { // 前回が1段目ON
-                if (input_key_analog[i] > 210) {
-                    // 2段目の深さまで押し込まれた
-                    input_key[n] = 3; // 2段目ON
-                    analog_stroke_most[i] = 0; // カウンタリセット
-                } else if (input_key_analog[n] < 30) {
-                    // 浅い位置に戻った
-                    input_key[n] = 0; // OFF
-                    analog_stroke_most[i] = 0; // カウンタリセット
-                } else {
-                    input_key[n] = 2;
-                    
-                }
-                
-            } else if (input_key_last[n] == 3) { // 前回が2段目ON
-                if (input_key_analog[i] < 30) {
-                    // 浅い位置に戻った
-                    input_key[n] = 0; // OFF
-                    analog_stroke_most[i] = 0; // カウンタリセット
-
-                } else if (input_key_analog[i] < 200) {
-                    // 2段目まで戻った
-                    analog_stroke_most[i]++; // 戻ったよ数をカウントしていき、5回を超えたらONにする(素早い入力の時は1段目を飛ばすため)
-                    if (analog_stroke_most[i] > 5) {
-                        input_key[n] = 2; // 2段目ON　＋　1段目OFF
-                        analog_stroke_most[i] = 0; // カウンタリセット
-                    } else {
-                        input_key[n] = 3;
-                    }
-                } else {
-                    // 深い位置
-                    input_key[n] = 3;
-                    analog_stroke_most[i] = 0; // カウンタリセット
-                }
-            }
-
+        // 静的なアクチュエーションポイントとラピットトリガー
+        // 固定位置で判定
+        if (input_key_analog[i] > acp) { // アクチュエーションポイントを超えたらON
+            input_key[n] = true;
+        } else if (input_key_analog[i] < rap) { // ラピットトリガーを下回ったらOFF
+            input_key[n] = false;
+        } else { // 中間地点にいる場合は前のステータスを引き継ぐ
+            input_key[n] = input_key_last[n];
         }
-        // if (analog_stroke_most[i] < input_key_analog[i]) analog_stroke_most[i] = input_key_analog[i];
-        /*
-        if (input_key_last[n] == 0) { // 前回が未入力
-            if (input_key_analog[i] > acp) { // アクチュエーションポイントを超えたらON
-                input_key[n] = 1;
-            } else {
-                input_key[n] = 0;
-            }
-        } else if (input_key_last[n] == 1) { // 前回が入力
-            if (input_key_analog[i] < rap && input_key_analog[i] < (analog_stroke_most[i] - 10)) { // ラピットトリガーを下回ったらOFF( && 最も押し込んだ所から最低-10 以上戻ったら)
-                if (act == 10) {
-                    input_key[n] = 0;
-                    analog_stroke_most[i] = 0; // 最も押し込んだ時のアナログ値
-                } else {
-                    input_key[n] = 2;
-                }
-            } else {
-                input_key[n] = 1; // ラピットトリガーを下回るまではONのまま
-            }
-        } else if (input_key_last[n] == 2) { // 前回がラピットトリガーOFFしてリセット待ち
-            if (a < (hall_offset[i] + 10) // デフォルトの値を下回ったらリセット
-                || ( input_key_analog[i] < acp && input_key_analog[i] < (rap - 50))) { // ラピットトリガーから30下がってたらリセット(アクチュエーションポイントより深い場合はリセットしない)
-                analog_stroke_most[i] = 0; // 最も押し込んだ時のアナログ値
-                input_key[n] = 0; // 今のステータス
-            } else {
-                input_key[n] = 2; // リセットするまではリセット待ちのまま
-            }
-        } else {
-            input_key[n] = 0;
-        }*/
-
         n++;
     }
     // マトリックス入力の取得
@@ -2028,7 +1906,7 @@ void AzCommon::key_read(void) {
         delayMicroseconds(50);
         // row の分キー入力チェック
         for (j=0; j<row_len; j++) {
-            input_key[n] = !digitalRead(row_list[j]);
+            input_key[n] = (!digitalRead(row_list[j]));
             n++;
         }
     }
@@ -2046,7 +1924,7 @@ void AzCommon::key_read(void) {
             delayMicroseconds(50);
             // col の分キー入力チェック
             for (j=0; j<col_len; j++) {
-                input_key[n] = !digitalRead(col_list[j]);
+                input_key[n] = (!digitalRead(col_list[j]));
                 n++;
             }
         }

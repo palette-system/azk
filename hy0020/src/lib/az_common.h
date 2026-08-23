@@ -259,9 +259,9 @@ class AzCommon
         bool layers_exists(int layer_no); // レイヤーが存在するか確認
         void layer_set(int layer_no); // 現在のレイヤーを指定したレイヤーにする
         setting_key_press get_key_setting(int layer_id, int key_num, short press_type); // 指定したキーの入力設定を取得する
-        int i2c_read(int p, i2c_option *opt, char *read_data); // I2C機器のキー状態を取得
+        int i2c_read(int p, i2c_option *opt, bool *read_data); // I2C機器のキー状態を取得
         void serial_read(); // シリアル通信(赤外線)読み込み
-        int nubkey_read(int p, nubkey_option *opt, char *read_data); // Nubkeyのキー状態を取得
+        int nubkey_read(int p, nubkey_option *opt, bool *read_data); // Nubkeyのキー状態を取得
         void nubkey_position_init(); // Nubkey ポジション設定情報初期化
         void nubkey_position_read(nubkey_option *opt); // Nubkey ポジション設定中動作
         void key_read(); // 現在のキーの状態を取得
@@ -269,8 +269,8 @@ class AzCommon
         bool key_changed(); // キーの状態が変化したかチェック
         uint8_t *input_key_analog; // 今入力中のアナログ値
         char *analog_stroke_most; // 最も押し込んだ時のアナログ値
-        char *input_key; // 今入力中のキー(ステータス)
-        char *input_key_last; // 最後にチェックした入力中のキー(ステータス)
+        bool *input_key; // 今入力中のキー(ステータス)
+        bool *input_key_last; // 最後にチェックした入力中のキー(ステータス)
         short *key_point; // 入力キーに該当する設定が何番目に入っているか
         uint16_t *key_count; // キー別の打鍵した数
         uint16_t key_count_total;
