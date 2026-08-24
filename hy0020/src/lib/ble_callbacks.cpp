@@ -13,6 +13,9 @@ BLEClientUart clientUart; // bleuart client
 
 uint8_t *check_addr;
 
+uint8_t send_data[OUTPUT_REPORT_RAW_MAX_LEN];
+
+
 /* ====================================================================================================================== */
 /** コールバック用共通 関数 */
 /* ====================================================================================================================== */
@@ -63,7 +66,7 @@ void addr_copy(uint8_t *addr_a, uint8_t *addr_b) {
 /* ====================================================================================================================== */
 
 void HidrawCallbackExec(int data_length) {
-	int h, i, j, k, l, m, s, o, p, x;
+	short h, i, j, k, l, m, s, o, p, x;
     uint8_t *command_id   = &(remap_buf[0]);
 	tracktall_pim447_data pim447_data_obj;
 	trackpad_cst816_data cst816_data_obj;
@@ -666,6 +669,7 @@ void HidrawCallbackExec(int data_length) {
 
 		}
 		case id_ble_uart_list_start: {
+			// アドバタイズ端末をスキャン開始
 			// BLE Uart のアドバタイズしている端末のリストを返す
 			send_buf[0] = id_ble_uart_list_start; // BLE Uart リスト
 			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
@@ -686,6 +690,7 @@ void HidrawCallbackExec(int data_length) {
 
 		}
 		case id_ble_uart_list: {
+			// アドバタイズ端末をスキャン終了
 			// 分割：親 意外はスキャンできない / 子供アドレスが設定されていたらスキャンできない
             if (ble_type != 1 || child_addr_flag) {
 			    send_buf[0] = id_ble_uart_list; // BLE Uart リスト
@@ -693,6 +698,7 @@ void HidrawCallbackExec(int data_length) {
 				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
 				memset(save_file_data, 0x00, 16);
 				strcat((char*)save_file_data, "{\"list\":[]}");
+				save_file_length = strlen((char*)save_file_data); // 作ったレスポンスJSONのサイズを取得
 				return;
 			}
 			Bluefruit.Scanner.stop();
@@ -706,6 +712,31 @@ void HidrawCallbackExec(int data_length) {
 			send_buf[3] = ((save_file_length >> 8) & 0xff);
 			send_buf[4] = (save_file_length & 0xff);
 			for (i=5; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+			return;
+
+		}
+		case id_get_child_file: {
+			// 分割：小 からファイルを取得する
+			// 分割：親 意外は子と接続してない || 子供アドレスが設定されていないと取得できない
+            if (ble_type != 1 || !child_addr_flag) {
+			    send_buf[0] = id_ble_uart_list; // BLE Uart リスト
+			    for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
+				memset(save_file_data, 0x00, 16);
+				strcat((char*)save_file_data, "");
+				save_file_length = strlen((char*)save_file_data); // 作ったレスポンスJSONのサイズを取得
+				return;
+			}
+			// 子端末にファイル取得要求
+			send_data[0] = id_get_file_start;
+			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) {
+				send_data[i] = remap_buf[i];
+			}
+			// sprintf("%c/kle.json", id_get_file_start);
+			clientUart.write(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
+			// ブラウザにリクエストしたよを返す
+			send_buf[0] = id_get_child_file; // BLE Uart リスト
+			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 			return;
 
 		}
@@ -792,8 +823,74 @@ void client_disconnect_callback(uint16_t conn_handle, uint8_t reason)
 
 // 分割キーボードから送られてきたコマンドを取得した時のコールバック
 void bleuart_rx_callback(BLEClientUart& uart_svc)
-{  
-  while (uart_svc.available()) {
-    // Serial.print( (char) uart_svc.read() );
-  }
+{
+	uint8_t get_data[OUTPUT_REPORT_RAW_MAX_LEN];
+	short i, read_length;
+	int s;
+
+	read_length = 0;
+	while (uart_svc.available()) {
+		get_data[read_length] = uart_svc.read();
+		read_length++;
+		if (read_length >= OUTPUT_REPORT_RAW_MAX_LEN) break;
+	}
+
+	uint8_t *command_id = &(get_data[0]);
+	memset(send_data, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
+
+	switch (*command_id) {
+		case id_get_file_start: { // 0x30 ファイル取得開始を受け取った
+			if (!get_data[1]) {
+				return;
+			}
+			save_file_length = (get_data[2] << 24) + (get_data[3] << 16) + (get_data[4] << 8) + get_data[5];
+			save_file_data = (uint8_t *)malloc(save_file_length);
+			send_data[0] = id_get_file_data; // ファイルデータ取得
+			send_data[1] = 1; // 並列でロードする step 数 (1固定)
+			send_data[2] = 0; // ロード開始位置 1
+			send_data[3] = 0; // ロード開始位置 2
+			send_data[4] = 0; // ロード開始位置 3
+			send_data[5] = 0; // ハッシュ値 1 (ハッシュ0はハッシュチェックをスキップ)
+			send_data[6] = 0; // ハッシュ値 2
+			send_data[7] = 0; // ハッシュ値 3
+			send_data[8] = 0; // ハッシュ値 4
+			// ファイルデータ取得コマンド送信
+			uart_svc.write(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
+			return;
+
+		}
+		case id_get_file_data: {
+			// ファイルデータを受け取る
+			s = (get_data[1] << 16) + (get_data[2] << 8) + get_data[3];
+			for (i=0; i<16; i++) {
+				if (s < save_file_length) {
+					save_file_data[s] = get_data[i + 4];
+				    s++;
+				}
+			}
+			if (s >= save_file_length) {
+				// 全データ受信完了
+				common_cls.write_file("/child", save_file_data, save_file_length);
+				free(save_file_data);
+
+
+			} else {
+				// 次のデータ要求
+				send_data[0] = id_get_file_data; // ファイルデータ取得
+				send_data[1] = 1; // 並列でロードする step 数 (1固定)
+				send_data[2] = (s >> 16) & 0xFF; // ロード開始位置 1
+				send_data[3] = (s >> 8) & 0xFF; // ロード開始位置 2
+				send_data[4] = s & 0xFF; // ロード開始位置 3
+				send_data[5] = 0; // ハッシュ値 1 (ハッシュ0はハッシュチェックをスキップ)
+				send_data[6] = 0; // ハッシュ値 2
+				send_data[7] = 0; // ハッシュ値 3
+				send_data[8] = 0; // ハッシュ値 4
+				// ファイルデータ取得コマンド送信
+				uart_svc.write(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
+
+			}
+			return;
+
+		}
+	}
 }

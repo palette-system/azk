@@ -32,7 +32,6 @@ void prph_bleuart_rx_callback(uint16_t conn_handle)
 			l = s * (data_length - 4); // ステップ数 x 1コマンドで送るデータ数
 			m = azcrc32(&save_file_data[p - l], l); // 前回送った所のハッシュを計算
 			if (h != m) { // ハッシュ値が違えば前に送った所をもう一回送る
-				// Serial.printf("NG : [%d %d] [ %d -> %d ]\n", h, m, p, (p - l));
 				p = p - l;
 			}
 		}
