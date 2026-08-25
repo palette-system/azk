@@ -13,7 +13,6 @@ BLEClientUart clientUart; // bleuart client
 
 uint8_t *check_addr;
 
-uint8_t send_data[OUTPUT_REPORT_RAW_MAX_LEN];
 
 
 /* ====================================================================================================================== */
@@ -66,7 +65,7 @@ void addr_copy(uint8_t *addr_a, uint8_t *addr_b) {
 /* ====================================================================================================================== */
 
 void HidrawCallbackExec(int data_length) {
-	short h, i, j, k, l, m, s, o, p, x;
+	int h, i, j, k, l, m, s, o, p, x;
     uint8_t *command_id   = &(remap_buf[0]);
 	tracktall_pim447_data pim447_data_obj;
 	trackpad_cst816_data cst816_data_obj;
@@ -113,6 +112,36 @@ void HidrawCallbackExec(int data_length) {
 		    
 		}
 		case id_get_file_data: { // 0x31 ファイルデータ要求
+			// 情報を取得
+			s = remap_buf[1]; // ステップ数
+			p = (remap_buf[2] << 16) + (remap_buf[3] << 8) + remap_buf[4]; // 読み込み開始位置
+			h = (remap_buf[5] << 24) + (remap_buf[6] << 16) + (remap_buf[7] << 8) + remap_buf[8]; // ハッシュ値
+			if (h != 0) {
+				l = (OUTPUT_REPORT_RAW_MAX_LEN - 4); // ステップ数 x 1コマンドで送るデータ数
+				m = azcrc32(&save_file_data[p - l], l); // 前回送った所のハッシュを計算
+				if (h != m) { // ハッシュ値が違えば前に送った所をもう一回送る
+					p = p - l;
+				}
+			}
+			send_buf[0] = id_get_file_data;
+			send_buf[1] = ((p >> 16) & 0xff);
+			send_buf[2] = ((p >> 8) & 0xff);
+			send_buf[3] = (p & 0xff);
+			i = 4;
+			while (p < save_file_length) {
+				send_buf[i] = save_file_data[p];
+				i++;
+				p++;
+				if (i >= OUTPUT_REPORT_RAW_MAX_LEN) break;
+			}
+			while (i < OUTPUT_REPORT_RAW_MAX_LEN) {
+				send_buf[i] = 0x00;
+				i++;
+			}
+
+			if (p >= save_file_length) {
+				free(save_file_data);
+			}
 			return;
 
 		}
@@ -728,15 +757,14 @@ void HidrawCallbackExec(int data_length) {
 				return;
 			}
 			// 子端末にファイル取得要求
-			send_data[0] = id_get_file_start;
+			send_buf[0] = id_get_file_start;
 			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) {
-				send_data[i] = remap_buf[i];
+				send_buf[i] = remap_buf[i];
 			}
 			// sprintf("%c/kle.json", id_get_file_start);
-			clientUart.write(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
-			// ブラウザにリクエストしたよを返す
-			send_buf[0] = id_get_child_file; // BLE Uart リスト
-			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+			clientUart.write(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
+			// ブラウザには何も返さない
+			send_buf[0] = 0x00;
 			return;
 
 		}
@@ -821,10 +849,12 @@ void client_disconnect_callback(uint16_t conn_handle, uint8_t reason)
 }
 
 
-// 分割キーボードから送られてきたコマンドを取得した時のコールバック
+// 分割キーボード小から送られてきたコマンドを親が取得した時のコールバック
+// (親側処理：いつもはAZTOOL側がやってる処理)
 void bleuart_rx_callback(BLEClientUart& uart_svc)
 {
 	uint8_t get_data[OUTPUT_REPORT_RAW_MAX_LEN];
+	uint8_t send_data[OUTPUT_REPORT_RAW_MAX_LEN];
 	short i, read_length;
 	int s;
 
@@ -841,10 +871,12 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 	switch (*command_id) {
 		case id_get_file_start: { // 0x30 ファイル取得開始を受け取った
 			if (!get_data[1]) {
+				// ファイルが存在しなかったら何もしない
 				return;
 			}
-			save_file_length = (get_data[2] << 24) + (get_data[3] << 16) + (get_data[4] << 8) + get_data[5];
-			save_file_data = (uint8_t *)malloc(save_file_length);
+			// ファイルを受け取る準備をしてデータ取得開始する
+			save_file_length = (get_data[2] << 24) + (get_data[3] << 16) + (get_data[4] << 8) + get_data[5]; // ファイルのサイズ取得
+			save_file_data = (uint8_t *)malloc(save_file_length); // ファイル取得用のメモリ確保
 			send_data[0] = id_get_file_data; // ファイルデータ取得
 			send_data[1] = 1; // 並列でロードする step 数 (1固定)
 			send_data[2] = 0; // ロード開始位置 1
@@ -881,6 +913,7 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 				send_data[2] = (s >> 16) & 0xFF; // ロード開始位置 1
 				send_data[3] = (s >> 8) & 0xFF; // ロード開始位置 2
 				send_data[4] = s & 0xFF; // ロード開始位置 3
+				// azcrc32();
 				send_data[5] = 0; // ハッシュ値 1 (ハッシュ0はハッシュチェックをスキップ)
 				send_data[6] = 0; // ハッシュ値 2
 				send_data[7] = 0; // ハッシュ値 3
