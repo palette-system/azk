@@ -6,16 +6,14 @@ int write_index;
 
 BLECustam blecus; // 送受信用サービス
 
-BLECharacteristic *_characteristic_input;
-BLECharacteristic *_characteristic_output;
 
-// ブラウザからデータを受け取った
+// ブラウザからデータを受け取った(BLE Uart)
 void prph_bleuart_rx_callback(uint16_t conn_handle)
 {
-	(void) conn_handle;
-	int s, p, h, l, m, i, j;
+	int p;
 	uint16_t data_length = INPUT_REPORT_RAW_MAX_LEN;
-	memset(remap_buf, 0, INPUT_REPORT_RAW_MAX_LEN);
+	memset(remap_buf, 0x00, INPUT_REPORT_RAW_MAX_LEN);
+	// 送られてきたデータ受け取り
 	p = 0;
 	while (bleuart.available() && p < INPUT_REPORT_RAW_MAX_LEN) {
 		remap_buf[p] = (uint8_t)bleuart.read();
@@ -26,13 +24,12 @@ void prph_bleuart_rx_callback(uint16_t conn_handle)
 	HidrawCallbackExec(data_length);
 	// 返信データ送信
 	if (send_buf[0]) {
-		// ble_gatt.h の BLE_GATT_ATT_MTU_DEFAULT がデフォルト 23 を 35 にしないと 送信する時 20 で通知が行ってしまう
 		bleuart.write(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
 	}
 }
 
+// ブラウザからデータを受け取った(HID カスタムサービス)
 void BLECustam::onCommandWritten(uint16_t conn_hdl, BLECharacteristic* characteristic, uint8_t* data, uint16_t data_length) {
-	int i;
 	memcpy(remap_buf, data, data_length);
 
     // 省電力モードの場合解除
@@ -44,7 +41,6 @@ void BLECustam::onCommandWritten(uint16_t conn_hdl, BLECharacteristic* character
 	HidrawCallbackExec(data_length);
 	// 返信データ送信
 	if (send_buf[0]) {
-		// ble_gatt.h の BLE_GATT_ATT_MTU_DEFAULT がデフォルト 23 を 35 にしないと 送信する時 20 で通知が行ってしまう
 		_characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
 	}
 }

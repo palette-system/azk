@@ -16,8 +16,6 @@
 #define  CUSTAM_UUID_INPUT  "0000ff17-0000-1000-8000-00805f9b34fb"
 #define  CUSTAM_UUID_OUTPUT  "0000ff18-0000-1000-8000-00805f9b34fb"
 
-extern BLECharacteristic *_characteristic_input;
-extern BLECharacteristic *_characteristic_output;
 
 void prph_bleuart_rx_callback(uint16_t conn_handle);
 

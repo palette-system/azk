@@ -18,8 +18,10 @@ uint8_t key_matrix_length;
 
 // hid
 int8_t ble_type; //0 = シングル / 1 = 分割(親) / 2 = 分割(小)
-int8_t child_addr_flag; // 分割子供アドレス設定の有無
+uint8_t  my_addr[6]; // 自分のアドレス
+bool child_addr_flag; // 分割子供アドレス設定の有無
 uint8_t child_addr[6]; // 分割子供アドレス
+char *child_name; // 分割子供端末名
 int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
 uint16_t hid_vid;
 uint16_t hid_pid;
@@ -158,7 +160,7 @@ bool seri_logic;
 // シリアル通信（赤外線）設定
 uint16_t seri_input[SERIAL_INPUT_MAX];
 uint8_t seri_cmd;
-uint8_t seri_buf[12];
+uint8_t seri_buf[SERIAL_BUF_SIZE];
 uint8_t seri_index;
 uint8_t seri_setting[12];
 uint8_t seri_up_buf[16];
@@ -277,6 +279,10 @@ void AzCommon::common_start() {
     keyboard_status = 0;
     // RGBLEDのステータス
     status_led_mode_last = -1;
+    // 子端末のアドレスを設定したか
+    child_addr_flag = false;
+    // 子端末のアドレス
+    memset(child_addr, 0x00, 6);
 }
 
 // ESP32 再起動
@@ -395,15 +401,16 @@ void AzCommon::load_setting_json() {
         hid_pid = BLE_HID_PID;
     }
 
-    // 分割キーボードの子供アドレス
-    if (setting_obj["child"].is<JsonArray>() && setting_obj["child"].size() == 6) {
-        child_addr_flag = 1;
-        for (i=0; i<6; i++) {
-            child_addr[i] = setting_obj["child"][i].as<signed int>();
-        }
+    // 分割キーボードの子供名
+    String cname;
+    if (setting_obj["child"].is<String>()) {
+        cname = setting_obj["child"].as<String>();
+        m = cname.length();
+        child_name = (char *)malloc(m + 1);
+        cname.toCharArray(child_name, m + 1);
     } else {
-        child_addr_flag = 0;
-        memset(child_addr, 0x00, sizeof(child_addr));
+        child_name = (char *)malloc(2);
+        memset(child_name, 0x00, 2);
     }
 
     // デフォルトのレイヤー番号設定
@@ -937,7 +944,7 @@ void AzCommon::get_keymap(JsonObject setting_obj) {
 
 // JSONデータからキーマップの情報を読み込む(1キー分)
 void AzCommon::get_keymap_one(JsonObject json_obj, setting_key_press *press_obj, uint16_t lnum, uint16_t knum) {
-    int j, k, m, at, s;
+    int j, m;
     String text_str;
     setting_normal_input normal_input;
     setting_layer_move layer_move_input;
@@ -1089,8 +1096,7 @@ bool AzCommon::create_setting_json() {
 
 // I2C機器の初期化(戻り値：増えるキーの数)
 int AzCommon::i2c_setup(int p, i2c_option *opt, short map_set) {
-    int i, j, k, m, x;
-    int r = 0;
+    int i, j, k, x;
     int set_type[16];
     i2c_map i2cmap_obj;
     i2c_ioxp i2cioxp_obj;
@@ -1196,11 +1202,8 @@ int AzCommon::i2c_setup(int p, i2c_option *opt, short map_set) {
 // キーの入力ピンの初期化
 void AzCommon::pin_setup() {
     // output ピン設定 (colで定義されているピンを全てoutputにする)
-    int c, i, j, m, x;
-    int mx, my;
+    int c, i, x;
     int offset_buf[10][hall_len];
-    char nubkey_path[16];
-    nubkey_setting_data nub_data;
 
     for (i=0; i<col_len; i++) {
         pinMode(col_list[i], OUTPUT);
@@ -1288,10 +1291,10 @@ void AzCommon::pin_setup() {
         irSerial->begin(seri_hz);
     }
     // シリアル通信(赤外線)入力データの初期化
-    memset(&seri_input, 0x00, sizeof(seri_input));
-    memset(&seri_buf, 0x00, sizeof(seri_buf));
-    memset(&seri_setting, 0x00, sizeof(seri_setting));
-    memset(&seri_up_buf, 0x00, sizeof(seri_up_buf));
+    memset(seri_input, 0x00, sizeof(seri_input));
+    memset(seri_buf, 0x00, sizeof(seri_buf));
+    memset(seri_setting, 0x00, sizeof(seri_setting));
+    memset(seri_up_buf, 0x00, sizeof(seri_up_buf));
     seri_cmd = 0;
     seri_setting_del = 0;
     
@@ -1373,10 +1376,8 @@ tracktall_pim447_data pim447_data_old;
 
 
 int AzCommon::i2c_read(int p, i2c_option *opt, bool *read_data) {
-    int e, i, j, k, m, n, r, x, y;
+    int e, i, j, k, m, n = 0, r, x, y;
     unsigned long now_time;
-    unsigned long start_time;
-    unsigned long end_time;
     uint8_t wcheck, hcheck;
     uint16_t rowput_mask;
     int rowput_len;
@@ -1741,8 +1742,8 @@ void AzCommon::serial_read() {
                     seri_buf[seri_index] = read_buf;
                 } else { // 4バイト目で処理
                     seri_buf[seri_index] = read_buf;
-                    for (i=5; i<sizeof(seri_buf); i++) seri_buf[i] = 0x00;
-                    memcpy(&seri_setting, &seri_buf, sizeof(seri_buf));
+                    for (i=5; i<SERIAL_BUF_SIZE; i++) seri_buf[i] = 0x00;
+                    memcpy(&seri_setting, &seri_buf, SERIAL_BUF_SIZE);
                     seri_setting_del = 200;
                     seri_cmd = 0;
                 }
@@ -1843,8 +1844,8 @@ void AzCommon::nubkey_position_read(nubkey_option *opt) {
 
 // 現在のキーの入力状態を取得
 void AzCommon::key_read(void) {
-    short a, i, j, m, n, s;
-    short act, acp, acpt, rap;
+    short a, i, j, m, n;
+    short acp, rap;
     setting_key_press *k;
     n = 0;
     // ダイレクト入力の取得
@@ -1863,14 +1864,10 @@ void AzCommon::key_read(void) {
         // 設定からアクチュエーションポイント、ラピットトリガー取得
         if (key_point[n] >= 0) {
             k = &setting_press[key_point[n]]; // キーの設定取得
-            act = k->action_type;
-            acpt = k->actuation_type;
             acp = k->actuation_point;
             rap = k->rapid_trigger;
         } else {
             // 設定がなければデフォルト値
-            act = 0;
-            acpt = ACTUATION_TYPE_DEFAULT;
             acp = ACTUATION_POINT_DEFAULT;
             rap = RAPID_TRIGGER_DEFAULT;
         }

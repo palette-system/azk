@@ -12,6 +12,11 @@ BleKeyboardJIS::BleKeyboardJIS(void)
 // BLEキーボードとして処理開始
 void BleKeyboardJIS::begin(char *deviceName)
 {
+    uint8_t  child_file_data[16]; // 前に接続した子端末のアドレスデータ
+    char addr_path[16];
+    short r;
+    sprintf(addr_path, "/child");
+
     if (ble_type == 1) { // 分割：親
       Bluefruit.begin(1, 1); // HID (1 接続) , BLE クライアント(1 接続)
     } else {
@@ -19,6 +24,19 @@ void BleKeyboardJIS::begin(char *deviceName)
     }
     Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
     Bluefruit.setName(deviceName);
+    Bluefruit.getAddr(my_addr); // 自分のアドレス取得
+
+    r = common_cls.read_file(addr_path, child_file_data);
+    if (r > 0) {
+      if (addr_check(child_file_data, my_addr)) {
+        // 頭6バイトが自分のアドレスなら子端末のアドレスを取得
+        child_addr_flag = true; // 子供アドレス取得したフラグ
+        addr_copy(child_addr, &child_file_data[6]); // 子供アドレス保持
+      } else {
+        // 頭6バイトが自分のアドレスじゃない場合、別の端末の設定をインポートしたデータなので削除
+        common_cls.remove_file(addr_path);
+      }
+    }
 
     if (ble_type == 1) { // 分割：親
       // Init BLE Central Uart Serivce
@@ -34,14 +52,14 @@ void BleKeyboardJIS::begin(char *deviceName)
 
       // BLE クライアント 設定
       Bluefruit.Scanner.setInterval(160, 80);       // in units of 0.625 ms
-      Bluefruit.Scanner.setRxCallback(scan_callback);
-      Bluefruit.Scanner.filterUuid(BLEUART_UUID_SERVICE);
-      Bluefruit.Scanner.restartOnDisconnect(true);
-      Bluefruit.Scanner.useActiveScan(false);       // Don't request scan response data
+      Bluefruit.Scanner.setRxCallback(scan_callback); // アドバタイズ端末を見つけた時に実行される関数を設定
+      Bluefruit.Scanner.filterUuid(BLEUART_UUID_SERVICE); // 指定したサービスがある端末だけスキャンする
+      Bluefruit.Scanner.restartOnDisconnect(true); // 接続が切断されたらスキャン再開
+      Bluefruit.Scanner.useActiveScan(false);       // アドバタイズ端末を見つけた時に追加情報要求を送るか
 
       // 子供アドレスが設定されていればスキャン開始
-      if (child_addr_flag) {
-        Bluefruit.Scanner.start(0);
+      if (child_addr_flag || strlen(child_name)) {
+        Bluefruit.Scanner.start(0); // 指定したミリ秒間だけスキャンをする 0=ずっとスキャン
       }
     }
 

@@ -10,6 +10,8 @@ BLEUart bleuart; // uart over ble
 // HID BLE クライアント
 BLEClientUart clientUart; // bleuart client
 
+BLECharacteristic *_characteristic_input;
+BLECharacteristic *_characteristic_output;
 
 uint8_t *check_addr;
 
@@ -702,27 +704,27 @@ void HidrawCallbackExec(int data_length) {
 			// BLE Uart のアドバタイズしている端末のリストを返す
 			send_buf[0] = id_ble_uart_list_start; // BLE Uart リスト
 			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
-			// 分割：親 意外はスキャンできない
-            if (ble_type != 1) return;
+			// 分割：親 意外はスキャンできない || 子端末名が指定してあれば既にスキャン中なのでスキャンできない
+            if (ble_type != 1 || strlen(child_name)) return;
 			// 子供アドレスが設定されていたらスキャンできない
 			if (child_addr_flag) return;
 			// スキャン開始
 			ble_scan_flag = 1; // スキャン中フラグON
 			save_file_data = (uint8_t *)malloc(256); // レスポンスJSONを格納するバッファを確保
-			check_addr = (uint8_t *)malloc(20 * BLE_GAP_ADDR_LEN); // 同じアドレスの端末をスキャンしないためのリスト
+			// check_addr = (uint8_t *)malloc(20 * BLE_GAP_ADDR_LEN); // 同じアドレスの端末をスキャンしないためのリスト
 			memset(save_file_data, 0x00, 256);
-			memset(check_addr, 0x00, 20 * BLE_GAP_ADDR_LEN);
+			// memset(check_addr, 0x00, 20 * BLE_GAP_ADDR_LEN);
 			strcat((char*)save_file_data, "{\"list\":[");
 			// アドバタイズ中の端末をスキャン
             Bluefruit.Scanner.start(0);
 			return;
 
 		}
-		case id_ble_uart_list: {
+		case id_ble_uart_list_end: {
 			// アドバタイズ端末をスキャン終了
-			// 分割：親 意外はスキャンできない / 子供アドレスが設定されていたらスキャンできない
-            if (ble_type != 1 || child_addr_flag) {
-			    send_buf[0] = id_ble_uart_list; // BLE Uart リスト
+			// 分割：親 意外はスキャンできない / 子端末名が指定してあればスキャンできない
+            if (ble_type != 1 || strlen(child_name)) {
+			    send_buf[0] = id_ble_uart_list_end; // BLE Uart リスト
 			    for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
 				memset(save_file_data, 0x00, 16);
@@ -735,7 +737,7 @@ void HidrawCallbackExec(int data_length) {
 			strcat((char*)save_file_data, "]}");
 			save_file_length = strlen((char*)save_file_data); // 作ったレスポンスJSONのサイズを取得
 			free(check_addr);
-			send_buf[0] = id_ble_uart_list; // BLE Uart リスト
+			send_buf[0] = id_ble_uart_list_end; // BLE Uart リスト
 			send_buf[1] = ((save_file_length >> 24) & 0xff);
 			send_buf[2] = ((save_file_length >> 16) & 0xff);
 			send_buf[3] = ((save_file_length >> 8) & 0xff);
@@ -748,7 +750,7 @@ void HidrawCallbackExec(int data_length) {
 			// 分割：小 からファイルを取得する
 			// 分割：親 意外は子と接続してない || 子供アドレスが設定されていないと取得できない
             if (ble_type != 1 || !child_addr_flag) {
-			    send_buf[0] = id_ble_uart_list; // BLE Uart リスト
+			    send_buf[0] = id_get_child_file; // BLE Uart リスト
 			    for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
 				memset(save_file_data, 0x00, 16);
@@ -763,7 +765,8 @@ void HidrawCallbackExec(int data_length) {
 			}
 			// sprintf("%c/kle.json", id_get_file_start);
 			clientUart.write(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
-			// ブラウザには何も返さない
+			// 小からファイルを受け取った後に
+			// このタイミングではブラウザには何も返さない
 			send_buf[0] = 0x00;
 			return;
 
@@ -781,20 +784,27 @@ void HidrawCallbackExec(int data_length) {
 void scan_callback(ble_gap_evt_adv_report_t* report)
 {
   short i;
+
+  // 同じアドレスをチェックするメモリが確保されていなければ確保
+  if (check_addr == NULL) {
+	check_addr = (uint8_t *)malloc(20 * BLE_GAP_ADDR_LEN); // 同じアドレスの端末をスキャンしないためのリスト
+	memset(check_addr, 0x00, 20 * BLE_GAP_ADDR_LEN);
+  }
+  // すでにスキャンした端末かどうかチェック
+  for (i=0; i<120; i+=6) {
+    if (addr_check(&check_addr[i], report->peer_addr.addr)) {
+      return;
+    }
+    if (addr_is_none(&check_addr[i])) break;
+  }
+  if (i >= 119) return;
+  // スキャンしたよリストにアドレスを追加
+  addr_copy(&check_addr[i], report->peer_addr.addr);
+
   if (ble_scan_flag) {
     // アドバタイズ端末スキャン中
-	// すでにスキャンした端末かどうかチェック
-	for (i=0; i<120; i+=6) {
-		if (addr_check(&check_addr[i], report->peer_addr.addr)) {
-			return;
-		}
-		if (addr_is_none(&check_addr[i])) break;
-	}
-	if (i >= 119) return;
 	// 2端末以降の場合はスキャン結果にカンマを追加
 	if (strlen((char*)save_file_data) > 16) strcat((char*)save_file_data, ",");
-	// スキャンしたよリストにアドレスを追加
-	addr_copy(&check_addr[i], report->peer_addr.addr);
 	Bluefruit.Central.connect(report); // 接続要求
 
   } else if (child_addr_flag) {
@@ -802,6 +812,11 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
 	if (addr_check(child_addr, report->peer_addr.addr)) {
 		Bluefruit.Central.connect(report); // 接続要求
 	}
+
+  } else if (strlen(child_name)) {
+	// 子端末の名前が設定されていればコネクション
+	Bluefruit.Central.connect(report); // 接続要求
+
   }
 }
 
@@ -809,29 +824,60 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
 // BLE Client コネクションが確立した時のコールバック
 void client_connect_callback(uint16_t conn_handle)
 {
+  // 相手の端末名、アドレスを取得
+  char central_name[32] = { 0 };
+  BLEConnection* conn = Bluefruit.Connection(conn_handle); // 接続情報取得
+  ble_gap_addr_t addr = conn->getPeerAddr(); // 接続アドレス取得
+  conn->getPeerName(central_name, sizeof(central_name)); // 接続端末の名前取得
+
   if (ble_scan_flag) {
-    // アドバタイズ端末スキャン中
-	char json_buf[128];
-	char central_name[32] = { 0 };
-	BLEConnection* conn = Bluefruit.Connection(conn_handle); // 接続情報取得
-	ble_gap_addr_t addr = conn->getPeerAddr(); // 接続アドレス取得
-	conn->getPeerName(central_name, sizeof(central_name)); // 接続端末の名前取得
+	// アドバタイズ端末スキャン中
 	// スキャン結果にJSONを追加
+	char json_buf[128];
 	sprintf(json_buf, "{\"addr\":[%d,%d,%d,%d,%d,%d],\"name\":\"%s\"}",
-		addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4], addr.addr[5], central_name);
+			addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4], addr.addr[5], central_name);
 	strcat((char*)save_file_data, json_buf);
 	// 接続終了
 	Bluefruit.disconnect(conn_handle);
 
-  } else {
+  } else if (child_addr_flag) {
+	// 子端末のアドレス
 	// Uart サービスがあれば Uart 初期化
 	if (clientUart.discover(conn_handle)) {
+		// シリアル通信開始
 		clientUart.enableTXD();
+		// 接続できたらスキャン終了
+		Bluefruit.Scanner.stop();
+		// 同じアドレスチェックするリストをクリア
+		free(check_addr);
 	} else {
+		// Uart サービスが無ければ接続しない
 		Bluefruit.disconnect(conn_handle);
 	}
-	// 接続で来たらスキャン終了
-	Bluefruit.Scanner.stop();
+
+  } else if (strlen(child_name)) {
+	// 子端末の名前が設定してあれば、名前が一致する端末だけ接続する
+	if (strcmp(central_name, child_name) == 0) {
+		// Uart サービスがあれば Uart 初期化
+		if (clientUart.discover(conn_handle)) {
+			uint8_t save_data[16]; // 子端末のアドレス保存用バッファ
+			addr_copy(&save_data[0], my_addr); // 自分のアドレス
+			addr_copy(&save_data[6], addr.addr); // 子端末のアドレス
+            common_cls.write_file("/child", save_data, 12); // 子端末のアドレスファイルを作成
+			// シリアル通信開始
+			clientUart.enableTXD();
+			// 接続できたらスキャン終了
+			Bluefruit.Scanner.stop();
+			// 同じアドレスチェックするリストをクリア
+			free(check_addr);
+		} else {
+			// Uart サービスが無ければ接続しない
+			Bluefruit.disconnect(conn_handle);
+		}
+	} else {
+		// 端末名が一致しない端末は接続しない
+		Bluefruit.disconnect(conn_handle);
+	}
 
   }
 }
@@ -871,7 +917,11 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 	switch (*command_id) {
 		case id_get_file_start: { // 0x30 ファイル取得開始を受け取った
 			if (!get_data[1]) {
-				// ファイルが存在しなかったら何もしない
+				// ファイルが存在しなかったを返す
+				send_data[0] = id_get_child_file; // ファイルデータ取得
+				send_data[1] = 0x00; // ファイルは存在しない
+				for (i=2; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_data[i] = 0x00;
+				_characteristic_input->notify(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
 				return;
 			}
 			// ファイルを受け取る準備をしてデータ取得開始する
@@ -902,8 +952,17 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 			}
 			if (s >= save_file_length) {
 				// 全データ受信完了
-				common_cls.write_file("/child", save_file_data, save_file_length);
-				free(save_file_data);
+				// common_cls.write_file("/child", save_file_data, save_file_length);
+				// free(save_file_data);
+				// データ準備できたよを返す
+				send_data[0] = id_get_child_file; // ファイルデータ取得
+				send_data[1] = 0x01; // ファイルは存在する
+				send_data[2] = ((save_file_length >> 24) & 0xff); // ファイルサイズ 1
+				send_data[3] = ((save_file_length >> 16) & 0xff); // ファイルサイズ 2
+				send_data[4] = ((save_file_length >> 8) & 0xff);  // ファイルサイズ 3
+				send_data[5] = (save_file_length & 0xff);         // ファイルサイズ 4
+				for (i=6; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_data[i] = 0x00;
+				_characteristic_input->notify(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
 
 
 			} else {

@@ -23,6 +23,12 @@ extern BLEUart bleuart; // uart over ble
 // HID BLE クライアント
 extern BLEClientUart clientUart; // bleuart client
 
+extern BLECharacteristic *_characteristic_input;
+extern BLECharacteristic *_characteristic_output;
+
+
+bool addr_check(uint8_t *addr_a, uint8_t *addr_b);
+void addr_copy(uint8_t *addr_a, uint8_t *addr_b);
 
 // HidrawCallback
 void HidrawCallbackExec(int data_length);

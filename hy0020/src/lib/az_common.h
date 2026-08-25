@@ -80,6 +80,8 @@ using namespace Adafruit_LittleFS_Namespace;
 // シリアル通信で入力されたキーのステータス(16ビット×16＝0～255キー)
 #define  SERIAL_INPUT_MAX  16
 
+// シリアル通信用バッファのサイズ
+#define  SERIAL_BUF_SIZE  12
 
 // 今押されているボタンの情報
 struct press_key_data {
@@ -284,8 +286,10 @@ class AzCommon
 
 // hid
 extern int8_t ble_type; // 0 = シングル / 1 = 分割(親) / 2 = 分割(小)
-extern int8_t child_addr_flag; // 分割子供アドレス設定の有無
+extern uint8_t  my_addr[6]; // 自分のアドレス
+extern bool child_addr_flag; // 分割子供アドレス設定の有無
 extern uint8_t child_addr[6]; // 分割子供アドレス
+extern char *child_name; // 分割子供端末名
 extern int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
 extern uint16_t hid_vid;
 extern uint16_t hid_pid;
