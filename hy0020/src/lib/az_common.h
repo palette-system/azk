@@ -83,6 +83,9 @@ using namespace Adafruit_LittleFS_Namespace;
 // シリアル通信用バッファのサイズ
 #define  SERIAL_BUF_SIZE  12
 
+// 分割：子の押されているデータバッファサイズ
+#define  CHILD_INPUT_KEY_MAX  12
+
 // 今押されているボタンの情報
 struct press_key_data {
     short action_type; // キーの動作タイプ 0=設定なし / 1=通常入力 / 2=テキスト入力 / 3=レイヤー変更 / 4=WEBフック
@@ -397,7 +400,9 @@ extern Wirelib wirelib_cls;
 
 
 // 入力キーの数
-extern int key_input_length;
+extern short host_input_length;
+extern short child_input_length;
+extern short key_input_length;
 
 // キースキャンループの待ち時間
 extern short loop_delay;
@@ -421,6 +426,9 @@ extern short hall_range_max;
 // holdの設定
 extern uint8_t hold_type;
 extern uint8_t hold_time;
+
+// 分割：子から受け取ったキー入力データ
+extern uint8_t child_input_key[CHILD_INPUT_KEY_MAX];
 
 // 押している最中のキーデータ
 extern press_key_data press_key_list[PRESS_KEY_MAX];

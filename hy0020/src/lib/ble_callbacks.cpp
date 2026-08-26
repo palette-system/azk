@@ -609,8 +609,8 @@ void HidrawCallbackExec(int data_length) {
 			common_cls.pin_setup();
 			// レスポンスデータ作成
 			send_buf[0] = id_set_pin_set; // ピン設定
-			send_buf[1] = ((key_input_length >> 24) & 0xff);
-			send_buf[2] = ((key_input_length >> 16) & 0xff);
+			send_buf[1] = 0;
+			send_buf[2] = 0;
 			send_buf[3] = ((key_input_length >> 8) & 0xff);
 			send_buf[4] = (key_input_length & 0xff);
 			for (i=2; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
@@ -910,6 +910,7 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 		read_length++;
 		if (read_length >= OUTPUT_REPORT_RAW_MAX_LEN) break;
 	}
+	for (i=read_length; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) get_data[i] = 0x00;
 
 	uint8_t *command_id = &(get_data[0]);
 	memset(send_data, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
@@ -962,6 +963,7 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 				send_data[4] = ((save_file_length >> 8) & 0xff);  // ファイルサイズ 3
 				send_data[5] = (save_file_length & 0xff);         // ファイルサイズ 4
 				for (i=6; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_data[i] = 0x00;
+				// ブラウザに送信
 				_characteristic_input->notify(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
 
 
@@ -984,5 +986,14 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 			return;
 
 		}
+		case 0x70: {
+			// キー入力情報を受け取ったらそのまま入力キーバッファに保存
+			for (i=0; i<CHILD_INPUT_KEY_MAX; i++) {
+				child_input_key[i] = get_data[i + 1];
+			}
+			// _characteristic_input->notify(get_data, OUTPUT_REPORT_RAW_MAX_LEN);
+            return;
+
+        }
 	}
 }

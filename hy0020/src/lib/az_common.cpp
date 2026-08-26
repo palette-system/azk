@@ -76,7 +76,9 @@ SoftwareSerial *irSerial;
 
 
 // 入力キーの数
-int key_input_length;
+short host_input_length;
+short child_input_length;
+short key_input_length;
 
 // キースキャンループの待ち時間
 short loop_delay;
@@ -100,6 +102,9 @@ short hall_range_max;
 // holdの設定
 uint8_t hold_type;
 uint8_t hold_time;
+
+// 分割：子から受け取ったキー入力データ
+uint8_t child_input_key[CHILD_INPUT_KEY_MAX];
 
 // 押している最中のキーデータ
 press_key_data press_key_list[PRESS_KEY_MAX];
@@ -281,8 +286,10 @@ void AzCommon::common_start() {
     status_led_mode_last = -1;
     // 子端末のアドレスを設定したか
     child_addr_flag = false;
-    // 子端末のアドレス
+    // 分割：子のアドレス
     memset(child_addr, 0x00, 6);
+    // 分割：子の押されているキーデータ
+    memset(child_input_key, 0x00, CHILD_INPUT_KEY_MAX);
 }
 
 // ESP32 再起動
@@ -411,6 +418,13 @@ void AzCommon::load_setting_json() {
     } else {
         child_name = (char *)malloc(2);
         memset(child_name, 0x00, 2);
+    }
+
+    // 分割キーボードの子供キー数
+    if (setting_obj["chlen"].is<int>()) {
+        child_input_length = setting_obj["chlen"].as<signed int>();
+    } else {
+        child_input_length = 0;
     }
 
     // デフォルトのレイヤー番号設定
@@ -1297,7 +1311,9 @@ void AzCommon::pin_setup() {
     memset(seri_up_buf, 0x00, sizeof(seri_up_buf));
     seri_cmd = 0;
     seri_setting_del = 0;
-    
+
+    host_input_length = key_input_length;
+    key_input_length += child_input_length;
     
 
     // 動作電圧チェック用ピン
@@ -1937,6 +1953,16 @@ void AzCommon::key_read(void) {
     // I2Cオプション
     for (i=0; i<i2copt_len; i++) {
         n += i2c_read(n, &i2copt[i], input_key);
+    }
+    // 分割：子のキー入力
+    for (i=host_input_length; i<key_input_length; i++) {
+        // まず分割：子の入力を全部OFFにする
+        input_key[i] = false;
+    }
+    m = child_input_key[0]; // 分割：子で押されているキー数
+    for (i=0; i<m; i++) {
+        a = child_input_key[1 + i]; // 押されているキー番号
+        input_key[host_input_length + a] = true; // 押されているキーをONにする
     }
 }
 
