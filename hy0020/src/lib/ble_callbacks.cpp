@@ -995,5 +995,11 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
             return;
 
         }
+		case id_send_child_mouse: {
+			// 分割：子からマウス移動情報を受け取った。マウス移動リストに追加
+			common_cls.press_mouse_list_push(0x2000, 5, get_data[1], get_data[2], get_data[3], get_data[4], 100);
+			return;
+
+		}
 	}
 }

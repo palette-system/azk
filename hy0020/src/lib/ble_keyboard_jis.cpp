@@ -59,7 +59,7 @@ void BleKeyboardJIS::begin(char *deviceName)
 
       // 子供アドレスが設定されていればスキャン開始
       if (child_addr_flag || strlen(child_name)) {
-        Bluefruit.Scanner.start(0); // 指定したミリ秒間だけスキャンをする 0=ずっとスキャン
+        Bluefruit.Scanner.start(0); // 指定した秒間だけスキャンをする 0=ずっとスキャン
       }
     }
 
@@ -355,7 +355,14 @@ void BleKeyboardJIS::mouse_move(signed char x, signed char y, signed char wheel,
         m[3] = wheel;
         m[4] = hWheel;
         */
-        blehid.mouseReport(this->_MouseButtons, x, y, wheel, hWheel);
+        if (ble_type == 2) {
+          // 分割：小
+          signed char send_data[5] = {id_send_child_mouse, x, y, wheel, hWheel};
+          bleuart.write((uint8_t *)send_data, 5); // 分割：親 にマウス移動情報を送る
+        } else {
+          // シングル / 分割：親
+          blehid.mouseReport(this->_MouseButtons, x, y, wheel, hWheel); // HID 信号送る
+        }
         // this->pInputCharacteristic3->setValue(m, 5);
         // this->pInputCharacteristic3->notify();
     }

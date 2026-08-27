@@ -44,25 +44,13 @@ using namespace Adafruit_LittleFS_Namespace;
 #define LOOP_DELAY_DEFAULT  5
 
 // ファームウェアのバージョン文字
-#define FIRMWARE_VERSION   "000121"
+#define FIRMWARE_VERSION   "000200"
 
 // EEPROMに保存しているデータのバージョン文字列
-#define EEP_DATA_VERSION    "AZN001"
+#define EEP_DATA_VERSION    "AZN002"
 
 // JSON のファイルパス
 #define SETTING_JSON_PATH "/setting.json"
-
-// 起動回数を保存するファイルのパス
-#define  BOOT_COUNT_PATH  "/boot_count"
-
-// システム情報を保存するファイルのパス
-#define  AZ_SYSTEM_FILE_PATH  "/sys_data"
-
-// 打鍵数を自動保存するかどうかの設定を保存するファイルパス
-#define  KEY_COUNT_AUTO_SAVE_PATH  "/key_count_auto_save"
-
-// デバッグモード 0=OFF / 1=ON
-#define  AZ_DEBUG_MODE 0
 
 // アクチュエーションタイプデフォルト
 #define  ACTUATION_TYPE_DEFAULT  0

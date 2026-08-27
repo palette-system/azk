@@ -273,7 +273,6 @@ void AzCommon::common_start() {
     }
     // マウスのスクロールボタンが押されているか
     mouse_scroll_flag = false;
-    // if (AZ_DEBUG_MODE) Serial.begin(115200);
     // aztoolで作業中かどうか
     aztool_mode_flag = 0;
     // キーボードのステータス
@@ -1833,8 +1832,8 @@ void AzCommon::key_read(void) {
     }
     m = child_input_key[0]; // 分割：子で押されているキー数
     for (i=0; i<m; i++) {
-        a = child_input_key[1 + i]; // 押されているキー番号
-        input_key[host_input_length + a] = true; // 押されているキーをONにする
+        a = host_input_length + child_input_key[1 + i]; // 押されているキー番号
+        if (a < key_input_length) input_key[a] = true; // 押されているキーをONにする
     }
 }
 
