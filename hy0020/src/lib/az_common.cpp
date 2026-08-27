@@ -171,10 +171,6 @@ uint8_t seri_setting[12];
 uint8_t seri_up_buf[16];
 uint16_t seri_setting_del;
 
-// Nubkey の設定
-nubkey_option *nubopt;
-short nubopt_len;
-int8_t nubkey_status;
 
 // AZTRACKPAD 用
 short aztrsc_x;
@@ -750,54 +746,6 @@ void AzCommon::load_setting_json() {
         i2copt_len = 0;
     }
 
-    // Nubkey オプション
-    if (setting_obj["nubkey"].is<JsonArray>() && setting_obj["nubkey"].size()) {
-        nubopt_len = setting_obj["nubkey"].size();
-        nubopt = new nubkey_option[nubopt_len]; // Nubkeyの設定を保持する変数
-        for (i=0; i<nubopt_len; i++) {
-            // 動作タイプ
-            if (setting_obj["nubkey"][i]["type"].is<int>()) {
-                nubopt[i].action_type = setting_obj["nubkey"][i]["type"].as<signed int>();
-            } else {
-                nubopt[i].action_type = 0;
-            }
-            // ピン
-            if (setting_obj["nubkey"][i]["pin"] && setting_obj["nubkey"][i]["pin"].size()) {
-                nubopt[i].up_pin = setting_obj["nubkey"][i]["pin"][0].as<signed int>();
-                nubopt[i].down_pin = setting_obj["nubkey"][i]["pin"][1].as<signed int>();
-                nubopt[i].left_pin = setting_obj["nubkey"][i]["pin"][2].as<signed int>();
-                nubopt[i].right_pin = setting_obj["nubkey"][i]["pin"][3].as<signed int>();
-            }
-            // 移動速度
-            if (setting_obj["nubkey"][i]["spx"].is<int>()) {
-                nubopt[i].speed_x = setting_obj["nubkey"][i]["spx"].as<signed int>();
-            } else {
-                nubopt[i].speed_x = 8000;
-            }
-            if (setting_obj["nubkey"][i]["spy"].is<int>()) {
-                nubopt[i].speed_y = setting_obj["nubkey"][i]["spy"].as<signed int>();
-            } else {
-                nubopt[i].speed_y = 8000;
-            }
-            // 中央位置
-            nubopt[i].rang_x = 0;
-            nubopt[i].rang_y = 0;
-            // 動かすアクチュエーションポイント
-            if (setting_obj["nubkey"][i]["sp"].is<int>()) {
-                nubopt[i].start_point = setting_obj["nubkey"][i]["sp"].as<signed int>();
-            } else {
-                nubopt[i].start_point = 1300;
-            }
-            // タップと判定する時間
-            if (setting_obj["nubkey"][i]["tt"].is<int>()) {
-                nubopt[i].tap_time = setting_obj["nubkey"][i]["tt"].as<signed int>();
-            } else {
-                nubopt[i].tap_time = 30;
-            }
-        }
-    } else {
-        nubopt_len = 0;
-    }
 
 
     // key_input_length = 16 * ioxp_len;
@@ -985,13 +933,24 @@ void AzCommon::get_keymap_one(JsonObject json_obj, setting_key_press *press_obj,
         press_obj->rapid_trigger = RAPID_TRIGGER_DEFAULT;
     }
     // ボタンの動作
-    press_obj->action_type = json_obj["action_type"].as<signed int>();
+    if (json_obj["action_type"].is<int>()) {
+        press_obj->action_type = json_obj["action_type"].as<signed int>();
+    } else if (json_obj["at"].is<int>()) { // at に略されてる場合もある
+        press_obj->action_type = json_obj["at"].as<signed int>();
+    } else {
+        // デフォルトは 1.通常入力
+        press_obj->action_type = 1;
+    }
     if (press_obj->action_type == 1 || press_obj->action_type == 12) {
         // 1.通常入力 / 12.コマンド入力
-        normal_input.key_length = json_obj["key"].size();
-        normal_input.key = new uint16_t[normal_input.key_length];
-        for (j=0; j<normal_input.key_length; j++) {
-                normal_input.key[j] = json_obj["key"][j].as<signed int>();
+        if (json_obj["key"].is<JsonArray>()) {
+            normal_input.key_length = json_obj["key"].size();
+            normal_input.key = new uint16_t[normal_input.key_length];
+            for (j=0; j<normal_input.key_length; j++) {
+                    normal_input.key[j] = json_obj["key"][j].as<signed int>();
+            }
+        } else {
+            normal_input.key_length = 0;
         }
         // 連打設定
         if (json_obj["repeat_interval"].is<int>()) {
@@ -1259,20 +1218,6 @@ void AzCommon::pin_setup() {
     if (read_type) {
         // ダブルマトリックス の場合COL×ROWが2倍になる
         key_input_length += col_len * row_len;
-    }
-
-    // Nubkey 初期化
-    nubkey_status = 0;
-    for (i=0; i<nubopt_len; i++) {
-        // ピンの初期化
-        pinMode(nubopt[i].up_pin , INPUT_PULLUP);
-        pinMode(nubopt[i].down_pin , INPUT_PULLUP);
-        pinMode(nubopt[i].left_pin , INPUT_PULLUP);
-        pinMode(nubopt[i].right_pin , INPUT_PULLUP);
-        // キーの数を加算
-        if (nubopt[i].action_type == 0) {
-            key_input_length++;
-        }
     }
 
     // I2C初期化
@@ -1788,75 +1733,6 @@ void AzCommon::serial_read() {
 
 }
 
-// Nubkey 読み込み
-int AzCommon::nubkey_read(int p, nubkey_option *opt, bool *read_data) {
-    int r = 0;
-    int a_up, a_down, a_left, a_right;
-    int x, y, w, mx, my;
-    if (nubkey_status != 0) {
-        if (nubkey_status == 1) {
-            // 中心位置設定中
-            nubkey_position_read(opt);
-        }
-        if (opt->action_type == 0) r++;
-        return r;
-    }
-    if (opt->action_type == 0) {
-        read_data[p] = false;
-        a_up = analogRead(opt->up_pin);
-        a_down = analogRead(opt->down_pin);
-        a_left = analogRead(opt->left_pin);
-        a_right = analogRead(opt->right_pin);
-        x = a_right - a_left - opt->rang_x;
-        y = a_down - a_up - opt->rang_y;
-        w = (a_up + a_down + a_left + a_right) / 4;
-        if (opt->enable_time < opt->tap_time && w < 1300) {
-            opt->enable_time++;
-        } else if (w < opt->start_point) {
-            mx = (x * (opt->start_point - w)) / opt->speed_x;
-            my = (y * (opt->start_point - w)) / opt->speed_y;
-            press_mouse_list_push(0x2000, 5, mx, my, 0, 0, 100); // action_type : 5 = マウス移動
-        } else {
-            // 短い時間押されていたらタップされたと判定してキーをONにする
-            if (opt->enable_time > 0 && opt->enable_time < opt->tap_time) {
-                read_data[p] = true;
-            }
-            opt->enable_time = 0;
-        }
-        r++;
-        p++;
-    }
-    return r;
-}
-
-// Nubkey ポジション設定情報初期化
-void AzCommon::nubkey_position_init() {
-    int i;
-    for (i=0; i<nubopt_len; i++) {
-        nubopt[i].read_x_min = 0;
-        nubopt[i].read_x_max = 0;
-        nubopt[i].read_y_min = 0;
-        nubopt[i].read_y_max = 0;
-    }
-}
-
-
-// Nubkey ポジション設定中動作
-void AzCommon::nubkey_position_read(nubkey_option *opt) {
-    short a_up, a_down, a_left, a_right;
-    short x, y;
-    a_up = analogRead(opt->up_pin);
-    a_down = analogRead(opt->down_pin);
-    a_left = analogRead(opt->left_pin);
-    a_right = analogRead(opt->right_pin);
-    x = a_right - a_left;
-    y = a_down - a_up;
-    if (opt->read_x_min > x) opt->read_x_min = x;
-    if (opt->read_x_max < x) opt->read_x_max = x;
-    if (opt->read_y_min > y) opt->read_y_min = y;
-    if (opt->read_y_max < y) opt->read_y_max = y;
-}
-
 
 // 現在のキーの入力状態を取得
 void AzCommon::key_read(void) {
@@ -1941,10 +1817,6 @@ void AzCommon::key_read(void) {
                 n++;
             }
         }
-    }
-    // Nubkey 読み込み
-    for (i=0; i<nubopt_len; i++) {
-        n += nubkey_read(n, &nubopt[i], input_key);
     }
     // シリアル通信(赤外線)読み込み
     if ((seri_tx >= 0 || seri_rx >= 0) && seri_hz > 0 ) {

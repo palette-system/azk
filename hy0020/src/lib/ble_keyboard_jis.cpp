@@ -480,7 +480,7 @@ void BleKeyboardJIS::split_send_key()
   short i, p;
   uint8_t send_data[12];
   memset(send_data, 0x00, 12);
-  send_data[0] = 0x70;
+  send_data[0] = id_send_child_key;
   p = 0;
   for (i=0; i<key_input_length; i++) {
       if (common_cls.input_key[i]) {

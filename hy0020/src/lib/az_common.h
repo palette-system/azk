@@ -212,36 +212,6 @@ struct i2c_option {
     i2c_map *i2cmap;
 };
 
-// Nubkey 設定
-struct nubkey_option {
-    // 基本設定
-    uint8_t action_type; // 動作タイプ
-    uint8_t up_pin; // ホールセンサー上のピン
-    uint8_t down_pin; // ホールセンサー下のピン
-    uint8_t left_pin; // ホールセンサー左のピン
-    uint8_t right_pin; // ホールセンサー右のピン
-    short start_point; // マウス移動が始まる位置
-    short tap_time; // タップと判定する時間
-    short enable_time; // ONになってからの時間
-    // 基準値用
-    short read_x_min; // X の最小
-    short read_x_max; // X の最大
-    short read_y_min; // Y の最小
-    short read_y_max; // Y の最大
-    short rang_x; // X の中心位置
-    short rang_y; // Y の中心位置
-    short speed_x; // X の速度調整
-    short speed_y; // Y の速度調整
-};
-
-// Nubkeyの保存した調整データ
-struct nubkey_setting_data {
-    short read_x_min; // X の最小
-    short read_x_max; // X の最大
-    short read_y_min; // Y の最小
-    short read_y_max; // Y の最大
-};
-
 
 // クラスの定義
 class AzCommon
@@ -266,9 +236,6 @@ class AzCommon
         setting_key_press get_key_setting(int layer_id, int key_num, short press_type); // 指定したキーの入力設定を取得する
         int i2c_read(int p, i2c_option *opt, bool *read_data); // I2C機器のキー状態を取得
         void serial_read(); // シリアル通信(赤外線)読み込み
-        int nubkey_read(int p, nubkey_option *opt, bool *read_data); // Nubkeyのキー状態を取得
-        void nubkey_position_init(); // Nubkey ポジション設定情報初期化
-        void nubkey_position_read(nubkey_option *opt); // Nubkey ポジション設定中動作
         void key_read(); // 現在のキーの状態を取得
         void key_old_copy(); // 現在のキーの状態を過去用配列にコピー
         bool key_changed(); // キーの状態が変化したかチェック
@@ -371,10 +338,6 @@ extern uint8_t seri_setting[12];
 extern uint8_t seri_up_buf[16];
 extern uint16_t seri_setting_del;
 
-// Nubkey 設定
-extern nubkey_option *nubopt;
-extern short nubopt_len;
-extern int8_t nubkey_status;
 
 // AZTRACKPAD 用
 extern short aztrsc_x;

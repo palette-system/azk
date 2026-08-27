@@ -56,12 +56,14 @@ enum via_command_id {
     id_ble_uart_list_start                  = 0x49,
     id_ble_uart_list_end                    = 0x4A,
     id_get_child_file                       = 0x4B,
+    id_get_key_length                       = 0x4C,
 
     // ステータス取得
     id_get_firmware_status                  = 0x60,
 
-    // 分割キーボード用
-    id_split_send_key                       = 0x70,
+    // 分割：子 から 分割：親 に送るコマンド
+    id_send_child_key                       = 0x70,
+    id_send_child_mouse                     = 0x71,
 
     // システム用
     id_unhandled                            = 0xFF,

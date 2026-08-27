@@ -863,7 +863,8 @@ void client_connect_callback(uint16_t conn_handle)
 			uint8_t save_data[16]; // 子端末のアドレス保存用バッファ
 			addr_copy(&save_data[0], my_addr); // 自分のアドレス
 			addr_copy(&save_data[6], addr.addr); // 子端末のアドレス
-            common_cls.write_file("/child", save_data, 12); // 子端末のアドレスファイルを作成
+			char child_path[] = "/child";
+            common_cls.write_file(child_path, save_data, 12); // 子端末のアドレスファイルを作成
 			// シリアル通信開始
 			clientUart.enableTXD();
 			// 接続できたらスキャン終了
@@ -986,12 +987,11 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 			return;
 
 		}
-		case 0x70: {
-			// キー入力情報を受け取ったらそのまま入力キーバッファに保存
+		case id_send_child_key: {
+			// 分割：子 からキー入力を受け取った。そのまま子用入力キーバッファに保存
 			for (i=0; i<CHILD_INPUT_KEY_MAX; i++) {
 				child_input_key[i] = get_data[i + 1];
 			}
-			// _characteristic_input->notify(get_data, OUTPUT_REPORT_RAW_MAX_LEN);
             return;
 
         }

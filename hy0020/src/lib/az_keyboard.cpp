@@ -361,11 +361,6 @@ void AzKeyboard::key_down_action(int key_num, short press_type) {
 
     } else if (action_type == 11) {
         // Nubkey 位置調整ボタン
-        nubkey_status = 1; // 位置調整中に変更
-        // Nubkey の位置取得を空に
-        common_cls.nubkey_position_init();
-        // キー押したよリストに追加
-        press_key_list_push(action_type, key_num, -1, select_layer_no, -1, press_type);
 
     } else if (action_type == 12) {
         // コマンド入力
@@ -492,10 +487,6 @@ void AzKeyboard::key_up_action(int key_num, short press_type) {
 
         } else if (action_type == 11) {
             // Nubkey 位置調整ボタン
-            nubkey_status = 0; // 動作中に戻す
-            // Nubkey の位置調整を反映
-            // common_cls.nubkey_position_set();
-            
 
         }
         // スグクリアしない。離したよカウンターカウント開始
@@ -746,6 +737,12 @@ void AzKeyboard::loop_exec_child(void) {
     if (common_cls.key_changed()) {
         bleKeyboard.split_send_key();
     }
+
+    // マウス移動処理
+    move_mouse_loop();
+
+    // 電源スイッチ用ループ処理
+    power_sleep_loop();
 
     // ステータスLED更新ループ
     status_led_loop();
