@@ -53,15 +53,15 @@ enum via_command_id {
     id_get_serial_input                     = 0x46,
     id_get_serial_setting                   = 0x47,
     id_get_cst816                           = 0x48,
-    id_ble_uart_list_start                  = 0x49,
-    id_ble_uart_list_end                    = 0x4A,
-    id_get_child_file                       = 0x4B,
-    id_get_scan_addr                        = 0x4C,
-    id_get_scan_data_end                    = 0x4D,
+    id_ble_scan_start                       = 0x49,
+    id_ble_scan_end                         = 0x4A,
+    id_get_scan_addr                        = 0x4B,
+    id_get_scan_data_end                    = 0x4C,
+    id_get_child_file                       = 0x4D,
 
     // ステータス取得
     id_get_firmware_status                  = 0x60,
-    id_get_key_length                       = 0x61,
+    id_get_ble_info                         = 0x61,
 
     // 分割：子 から 分割：親 に送るコマンド
     id_send_child_key                       = 0x70,

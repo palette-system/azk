@@ -684,16 +684,21 @@ void HidrawCallbackExec(int data_length) {
 			return;
 
 		}
-		case id_get_key_length: {
-			// キー数取得
+		case id_get_ble_info: {
+			// BLE 情報取得
 			memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
-			send_buf[0] = id_get_key_length; // キー数取得
-			send_buf[1] = (host_input_length >> 8) & 0xFF;
-			send_buf[2] = (host_input_length & 0xFF);
-			send_buf[3] = (child_input_length >> 8) & 0xFF;
-			send_buf[4] = (child_input_length & 0xFF);
-			send_buf[5] = (key_input_length >> 8) & 0xFF;
-			send_buf[6] = (key_input_length & 0xFF);
+			send_buf[0] = id_get_ble_info; // キー数取得
+			for (i=0; i<6; i++) {
+				send_buf[1 + i] = my_addr[i]; // 自分の BLE mac アドレス
+			}
+			send_buf[7] = ble_scan_flag; // スキャン中かどうか
+			send_buf[8] = (child_conn_flag)? 0x01: 0x00; // 子端末に接続しているかどうか
+			send_buf[9] = (host_input_length >> 8) & 0xFF; // 自分のキー数
+			send_buf[10] = (host_input_length & 0xFF); // 自分のキー数
+			send_buf[11] = (child_input_length >> 8) & 0xFF; // 子端末のキー数
+			send_buf[12] = (child_input_length & 0xFF); // 子端末のキー数
+			send_buf[13] = (key_input_length >> 8) & 0xFF; // キー数合計
+			send_buf[14] = (key_input_length & 0xFF); // キー数合計
 			return;
 
 		}
@@ -714,10 +719,10 @@ void HidrawCallbackExec(int data_length) {
 			return;
 
 		}
-		case id_ble_uart_list_start: {
+		case id_ble_scan_start: {
 			// アドバタイズ端末をスキャン開始
 			// BLE Uart のアドバタイズしている端末のリストを返す
-			send_buf[0] = id_ble_uart_list_start; // BLE Uart リスト
+			send_buf[0] = id_ble_scan_start; // BLE Uart リスト
 			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 			// 分割：親 意外はスキャンできない || 子端末名が指定してあれば既にスキャン中なのでスキャンできない
             if (ble_type != 1 || strlen(child_name)) return;
@@ -730,15 +735,19 @@ void HidrawCallbackExec(int data_length) {
 			return;
 
 		}
-		case id_ble_uart_list_end: {
+		case id_ble_scan_end: {
 			// アドバタイズ端末をスキャン終了
 			// 分割：親 意外はスキャンできない / 子端末名が指定してあればスキャンできない
             if (ble_type == 1 && !strlen(child_name)) {
 			    Bluefruit.Scanner.stop();
+				// 同じアドレスチェックするリストをクリア
+				if (check_addr != NULL) {
+					free(check_addr);
+					check_addr = NULL;
+				}
 			}
-			Bluefruit.Scanner.stop();
 			ble_scan_flag = 0; // スキャン中フラグOFF
-			send_buf[0] = id_ble_uart_list_end; // BLE Uart リスト
+			send_buf[0] = id_ble_scan_end; // BLE Uart リスト
 			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 			return;
 
@@ -770,9 +779,9 @@ void HidrawCallbackExec(int data_length) {
 		}
 		case id_get_scan_data_end: {
 			// スキャン中に接続した端末のデータ抽出終了
-			child_conn_flag = false;
-			// 接続完了
-			Bluefruit.disconnect(ble_scan_handle);
+			if (ble_scan_flag && child_conn_flag) { // スキャン中 & 子端末に接続中
+				Bluefruit.disconnect(ble_scan_handle);
+			}
 			// 抽出終了を受け取りましたを返す
 			send_buf[0] = id_get_scan_data_end; // BLE Uart リスト
 			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
@@ -801,11 +810,15 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
   // すでにスキャンした端末かどうかチェック
   for (i=0; i<120; i+=6) {
     if (addr_check(&check_addr[i], report->peer_addr.addr)) {
+		Bluefruit.Scanner.resume();
       return;
     }
     if (addr_is_none(&check_addr[i])) break;
   }
-  if (i >= 119) return;
+  if (i >= 119) {
+	Bluefruit.Scanner.resume();
+	return;
+  }
   // スキャンしたよリストにアドレスを追加
   addr_copy(&check_addr[i], report->peer_addr.addr);
 
@@ -824,6 +837,8 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
 	// 子端末の名前が設定されていればコネクション
 	Bluefruit.Central.connect(report); // 接続要求
 
+  } else {
+	Bluefruit.Scanner.resume();
   }
 }
 
@@ -851,15 +866,14 @@ void client_connect_callback(uint16_t conn_handle)
 		return;
 	}
 	// Dis サービスがあれば Dis 初期化 + キーボードの型番取得
-	if (clientDis.discover(ble_scan_handle)) {
-		// 型番取得
-		if (!clientDis.getModel(model_buf, sizeof(model_buf))) {
-			// 型番が取得できなければ接続しない
-			Bluefruit.disconnect(ble_scan_handle);
-			return;
-		}
-	} else {
+	if (!clientDis.discover(ble_scan_handle)) {
 		// Dis サービスが無ければ接続しない
+		Bluefruit.disconnect(ble_scan_handle);
+		return;
+	}
+	// 型番取得
+	if (!clientDis.getModel(model_buf, sizeof(model_buf))) {
+		// 型番が取得できなければ接続しない
 		Bluefruit.disconnect(ble_scan_handle);
 		return;
 	}
@@ -882,7 +896,7 @@ void client_connect_callback(uint16_t conn_handle)
 	_characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN); // コマンド送信
 
   } else if (child_addr_flag) {
-	// 子端末のアドレス
+	// 子端末のアドレスから接続した
 	// Dis サービスがあれば Dis 初期化 + キーボードのキー数取得
 	if (clientDis.discover(conn_handle)) {
 		if (clientDis.getModel(model_buf, sizeof(model_buf))) {
