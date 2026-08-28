@@ -725,11 +725,6 @@ void HidrawCallbackExec(int data_length) {
 			if (child_addr_flag) return;
 			// スキャン開始
 			ble_scan_flag = 1; // スキャン中フラグON
-			save_file_data = (uint8_t *)malloc(256); // レスポンスJSONを格納するバッファを確保
-			// check_addr = (uint8_t *)malloc(20 * BLE_GAP_ADDR_LEN); // 同じアドレスの端末をスキャンしないためのリスト
-			memset(save_file_data, 0x00, 256);
-			// memset(check_addr, 0x00, 20 * BLE_GAP_ADDR_LEN);
-			strcat((char*)save_file_data, "{\"list\":[");
 			// アドバタイズ中の端末をスキャン
             Bluefruit.Scanner.start(0);
 			return;
@@ -738,33 +733,20 @@ void HidrawCallbackExec(int data_length) {
 		case id_ble_uart_list_end: {
 			// アドバタイズ端末をスキャン終了
 			// 分割：親 意外はスキャンできない / 子端末名が指定してあればスキャンできない
-            if (ble_type != 1 || strlen(child_name)) {
-			    send_buf[0] = id_ble_uart_list_end; // BLE Uart リスト
-			    for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
-				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
-				memset(save_file_data, 0x00, 16);
-				strcat((char*)save_file_data, "{\"list\":[]}");
-				save_file_length = strlen((char*)save_file_data); // 作ったレスポンスJSONのサイズを取得
-				return;
+            if (ble_type == 1 && !strlen(child_name)) {
+			    Bluefruit.Scanner.stop();
 			}
 			Bluefruit.Scanner.stop();
 			ble_scan_flag = 0; // スキャン中フラグOFF
-			strcat((char*)save_file_data, "]}");
-			save_file_length = strlen((char*)save_file_data); // 作ったレスポンスJSONのサイズを取得
-			free(check_addr);
 			send_buf[0] = id_ble_uart_list_end; // BLE Uart リスト
-			send_buf[1] = ((save_file_length >> 24) & 0xff);
-			send_buf[2] = ((save_file_length >> 16) & 0xff);
-			send_buf[3] = ((save_file_length >> 8) & 0xff);
-			send_buf[4] = (save_file_length & 0xff);
-			for (i=5; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 			return;
 
 		}
 		case id_get_child_file: {
 			// 分割：小 からファイルを取得する
 			// 分割：親 意外は子と接続してない || 子供アドレスが設定されていないと取得できない || 子供と接続していない
-            if (ble_type != 1 || !child_addr_flag || !child_conn_flag) {
+            if (ble_scan_flag == 0 && (ble_type != 1 || !child_addr_flag || !child_conn_flag)) {
 			    send_buf[0] = id_get_child_file; // BLE Uart リスト
 			    for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
@@ -783,6 +765,17 @@ void HidrawCallbackExec(int data_length) {
 			// 小からファイルを受け取った後に
 			// このタイミングではブラウザには何も返さない
 			send_buf[0] = 0x00;
+			return;
+
+		}
+		case id_get_scan_data_end: {
+			// スキャン中に接続した端末のデータ抽出終了
+			child_conn_flag = false;
+			// 接続完了
+			Bluefruit.disconnect(ble_scan_handle);
+			// 抽出終了を受け取りましたを返す
+			send_buf[0] = id_get_scan_data_end; // BLE Uart リスト
+			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 			return;
 
 		}
@@ -819,7 +812,6 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
   if (ble_scan_flag) {
     // アドバタイズ端末スキャン中
 	// 2端末以降の場合はスキャン結果にカンマを追加
-	if (strlen((char*)save_file_data) > 16) strcat((char*)save_file_data, ",");
 	Bluefruit.Central.connect(report); // 接続要求
 
   } else if (child_addr_flag) {
@@ -852,13 +844,42 @@ void client_connect_callback(uint16_t conn_handle)
 
   if (ble_scan_flag) {
 	// アドバタイズ端末スキャン中
-	// スキャン結果にJSONを追加
-	char json_buf[128];
-	sprintf(json_buf, "{\"addr\":[%d,%d,%d,%d,%d,%d],\"name\":\"%s\"}",
-			addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4], addr.addr[5], central_name);
-	strcat((char*)save_file_data, json_buf);
-	// 接続終了
-	Bluefruit.disconnect(conn_handle);
+	ble_scan_handle = conn_handle; // スキャン中にコネクションしたハンドルを保持
+	// Uart サービスが無ければ接続しない
+	if (!clientUart.discover(ble_scan_handle)) {
+		Bluefruit.disconnect(ble_scan_handle);
+		return;
+	}
+	// Dis サービスがあれば Dis 初期化 + キーボードの型番取得
+	if (clientDis.discover(ble_scan_handle)) {
+		// 型番取得
+		if (!clientDis.getModel(model_buf, sizeof(model_buf))) {
+			// 型番が取得できなければ接続しない
+			Bluefruit.disconnect(ble_scan_handle);
+			return;
+		}
+	} else {
+		// Dis サービスが無ければ接続しない
+		Bluefruit.disconnect(ble_scan_handle);
+		return;
+	}
+	// シリアル通信開始
+	clientUart.enableTXD();
+	// 接続したよフラグを立てる
+	child_conn_flag = true;
+	// 接続できたらスキャン終了
+	Bluefruit.Scanner.stop();
+	// アドレスと名前を返すデータ作成
+	save_file_data = (uint8_t *)malloc(256);
+	memset(save_file_data, 0x00, 256); // メモリ内クリア
+	sprintf((char *)save_file_data, "{\"addr\":[%d,%d,%d,%d,%d,%d],\"model\":\"%s\",\"name\":\"%s\"}",
+			addr.addr[0], addr.addr[1], addr.addr[2], addr.addr[3], addr.addr[4], addr.addr[5], model_buf, central_name);
+	// アドレスとデータを返すコマンドをブラウザに送信
+	save_file_length = strlen((char *)save_file_data); // 生成したJSONのサイズ
+	memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
+	send_buf[0] = id_get_scan_addr; // 子アドレスを返す
+	send_buf[1] = save_file_length & 0xFF; // 送るデータのサイズ
+	_characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN); // コマンド送信
 
   } else if (child_addr_flag) {
 	// 子端末のアドレス

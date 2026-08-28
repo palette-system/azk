@@ -56,6 +56,8 @@ enum via_command_id {
     id_ble_uart_list_start                  = 0x49,
     id_ble_uart_list_end                    = 0x4A,
     id_get_child_file                       = 0x4B,
+    id_get_scan_addr                        = 0x4C,
+    id_get_scan_data_end                    = 0x4D,
 
     // ステータス取得
     id_get_firmware_status                  = 0x60,

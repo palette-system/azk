@@ -24,6 +24,7 @@ uint8_t child_addr[6]; // 分割子供アドレス
 char *child_name; // 分割子供端末名
 bool child_conn_flag; // 分割：子と接続状態かどうか
 int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
+uint16_t ble_scan_handle; // スキャン中に接続した接続のハンドル
 uint16_t hid_vid;
 uint16_t hid_pid;
 uint16_t hid_conn_handle = 0; // ペアリングしている機器のハンドルID
