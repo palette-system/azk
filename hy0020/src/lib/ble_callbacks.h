@@ -18,6 +18,7 @@ using namespace Adafruit_LittleFS_Namespace;
 // HID キーボード
 extern BLEDis bledis; // BLE 情報サービス
 extern BLEHidAdafruit blehid; // キーボードサービス
+extern BLEClientDis  clientDis;  // device information client
 extern BLEUart bleuart; // uart over ble
 
 // HID BLE クライアント

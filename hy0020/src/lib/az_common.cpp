@@ -22,6 +22,7 @@ uint8_t  my_addr[6]; // 自分のアドレス
 bool child_addr_flag; // 分割子供アドレス設定の有無
 uint8_t child_addr[6]; // 分割子供アドレス
 char *child_name; // 分割子供端末名
+bool child_conn_flag; // 分割：子と接続状態かどうか
 int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
 uint16_t hid_vid;
 uint16_t hid_pid;
@@ -281,10 +282,21 @@ void AzCommon::common_start() {
     status_led_mode_last = -1;
     // 子端末のアドレスを設定したか
     child_addr_flag = false;
+    // 小端末と接続状態かどうか
+    child_conn_flag = false;
     // 分割：子のアドレス
     memset(child_addr, 0x00, 6);
     // 分割：子の押されているキーデータ
     memset(child_input_key, 0x00, CHILD_INPUT_KEY_MAX);
+    // ファイルから分割：子のキー数を取得
+    char addr_path[] = "/child";
+    uint8_t read_buf[16];
+    i = common_cls.read_file(addr_path, read_buf);
+    if (i > 0) {
+        child_input_length = (read_buf[12] << 8) + read_buf[13]; // 子供のキー数
+    } else {
+        child_input_length = 0;
+    }
 }
 
 // ESP32 再起動
@@ -416,11 +428,11 @@ void AzCommon::load_setting_json() {
     }
 
     // 分割キーボードの子供キー数
-    if (setting_obj["chlen"].is<int>()) {
-        child_input_length = setting_obj["chlen"].as<signed int>();
-    } else {
-        child_input_length = 0;
-    }
+    // if (setting_obj["chlen"].is<int>()) {
+    //     child_input_length = setting_obj["chlen"].as<signed int>();
+    // } else {
+    //     child_input_length = 0;
+    // }
 
     // デフォルトのレイヤー番号設定
     default_layer_no = setting_obj["default_layer"].as<signed int>();

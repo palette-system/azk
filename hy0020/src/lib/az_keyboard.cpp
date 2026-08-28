@@ -754,6 +754,7 @@ void AzKeyboard::loop_exec_child(void) {
 
     // キーボードリスタート要求を受け取った
     if (aztool_mode_flag == 3) {
+        delay(300);
         common_cls.restart(); // 再起動
     }
 

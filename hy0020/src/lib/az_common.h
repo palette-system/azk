@@ -248,6 +248,7 @@ extern uint8_t  my_addr[6]; // 自分のアドレス
 extern bool child_addr_flag; // 分割子供アドレス設定の有無
 extern uint8_t child_addr[6]; // 分割子供アドレス
 extern char *child_name; // 分割子供端末名
+extern bool child_conn_flag; // 分割：子と接続状態かどうか
 extern int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
 extern uint16_t hid_vid;
 extern uint16_t hid_pid;

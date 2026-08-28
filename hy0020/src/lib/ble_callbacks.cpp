@@ -7,7 +7,8 @@ BLEDis bledis; // BLE 情報サービス
 BLEHidAdafruit blehid; // キーボードサービス
 BLEUart bleuart; // uart over ble
 
-// HID BLE クライアント
+// BLE Uart Dis クライアント
+BLEClientDis  clientDis;  // device information client
 BLEClientUart clientUart; // bleuart client
 
 BLECharacteristic *_characteristic_input;
@@ -677,8 +678,22 @@ void HidrawCallbackExec(int data_length) {
 		}
 		case id_get_firmware_status: {
 			// ファームウェアステータス取得
+			memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
 			sprintf((char *)send_buf, "%c%s-%s", id_get_firmware_status, FIRMWARE_VERSION, EEP_DATA_VERSION);
 			// this->sendRawData(send_buf, 32);
+			return;
+
+		}
+		case id_get_key_length: {
+			// キー数取得
+			memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
+			send_buf[0] = id_get_key_length; // キー数取得
+			send_buf[1] = (host_input_length >> 8) & 0xFF;
+			send_buf[2] = (host_input_length & 0xFF);
+			send_buf[3] = (child_input_length >> 8) & 0xFF;
+			send_buf[4] = (child_input_length & 0xFF);
+			send_buf[5] = (key_input_length >> 8) & 0xFF;
+			send_buf[6] = (key_input_length & 0xFF);
 			return;
 
 		}
@@ -748,8 +763,8 @@ void HidrawCallbackExec(int data_length) {
 		}
 		case id_get_child_file: {
 			// 分割：小 からファイルを取得する
-			// 分割：親 意外は子と接続してない || 子供アドレスが設定されていないと取得できない
-            if (ble_type != 1 || !child_addr_flag) {
+			// 分割：親 意外は子と接続してない || 子供アドレスが設定されていないと取得できない || 子供と接続していない
+            if (ble_type != 1 || !child_addr_flag || !child_conn_flag) {
 			    send_buf[0] = id_get_child_file; // BLE Uart リスト
 			    for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 				save_file_data = (uint8_t *)malloc(16); // レスポンスJSONを格納するバッファを確保
@@ -825,7 +840,12 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
 void client_connect_callback(uint16_t conn_handle)
 {
   // 相手の端末名、アドレスを取得
-  char central_name[32] = { 0 };
+  char central_name[33] = "";
+  char child_path[] = "/child";
+  uint8_t save_data[16]; // 子端末のアドレス保存用バッファ
+  char model_buf[33] = "";
+  char key_len_buf[4] = "";
+  short key_len;
   BLEConnection* conn = Bluefruit.Connection(conn_handle); // 接続情報取得
   ble_gap_addr_t addr = conn->getPeerAddr(); // 接続アドレス取得
   conn->getPeerName(central_name, sizeof(central_name)); // 接続端末の名前取得
@@ -842,10 +862,32 @@ void client_connect_callback(uint16_t conn_handle)
 
   } else if (child_addr_flag) {
 	// 子端末のアドレス
+	// Dis サービスがあれば Dis 初期化 + キーボードのキー数取得
+	if (clientDis.discover(conn_handle)) {
+		if (clientDis.getModel(model_buf, sizeof(model_buf))) {
+			// 2文字目から数字３桁を取得
+			key_len_buf[0] = model_buf[1];
+			key_len_buf[1] = model_buf[2];
+			key_len_buf[2] = model_buf[3];
+			key_len_buf[3] = 0x00;
+			key_len = atoi(key_len_buf);
+			if (child_input_length != key_len) {
+				// ファイルに保存してたキー数と変わっていればファイルを更新して再起動
+				addr_copy(&save_data[0], my_addr); // 自分のアドレス
+				addr_copy(&save_data[6], addr.addr); // 子端末のアドレス
+				save_data[12] = (key_len >> 8) & 0xFF;
+				save_data[13] = key_len & 0xFF;
+				common_cls.write_file(child_path, save_data, 14); // 子端末のアドレスファイルを保存
+				aztool_mode_flag = 3; // キーボードリスタート要求
+			}
+		}
+	}
 	// Uart サービスがあれば Uart 初期化
 	if (clientUart.discover(conn_handle)) {
 		// シリアル通信開始
 		clientUart.enableTXD();
+		// 接続したよフラグを立てる
+		child_conn_flag = true;
 		// 接続できたらスキャン終了
 		Bluefruit.Scanner.stop();
 		// 同じアドレスチェックするリストをクリア
@@ -857,20 +899,38 @@ void client_connect_callback(uint16_t conn_handle)
 
   } else if (strlen(child_name)) {
 	// 子端末の名前が設定してあれば、名前が一致する端末だけ接続する
-	if (strcmp(central_name, child_name) == 0) {
+	if (strcmp(central_name, child_name) == 0) { // 子端末の名前と一致する端末
+		// Dis サービスがあれば Dis 初期化 + キーボードのキー数取得
+		key_len = 0;
+		if (clientDis.discover(conn_handle)) {
+			if (clientDis.getModel(model_buf, sizeof(model_buf))) {
+				// 2文字目から数字３桁を取得
+				key_len_buf[0] = model_buf[1];
+				key_len_buf[1] = model_buf[2];
+				key_len_buf[2] = model_buf[3];
+				key_len_buf[3] = 0x00;
+				key_len = atoi(key_len_buf); // キー数取得
+			} else {
+				// Dis から Model が無ければ接続しない
+				Bluefruit.disconnect(conn_handle);
+			}
+		} else {
+			// Dis サービスが無ければ接続しない
+			Bluefruit.disconnect(conn_handle);
+		}
 		// Uart サービスがあれば Uart 初期化
 		if (clientUart.discover(conn_handle)) {
-			uint8_t save_data[16]; // 子端末のアドレス保存用バッファ
 			addr_copy(&save_data[0], my_addr); // 自分のアドレス
 			addr_copy(&save_data[6], addr.addr); // 子端末のアドレス
-			char child_path[] = "/child";
-            common_cls.write_file(child_path, save_data, 12); // 子端末のアドレスファイルを作成
-			// シリアル通信開始
-			clientUart.enableTXD();
+			save_data[12] = (key_len >> 8) & 0xFF;
+			save_data[13] = key_len & 0xFF;
+            common_cls.write_file(child_path, save_data, 14); // 子端末のアドレスファイルを作成
 			// 接続できたらスキャン終了
 			Bluefruit.Scanner.stop();
-			// 同じアドレスチェックするリストをクリア
-			free(check_addr);
+			// アドレス情報、キー情報が取れたら切断
+			Bluefruit.disconnect(conn_handle);
+			// キーボードリスタート要求
+			aztool_mode_flag = 3;
 		} else {
 			// Uart サービスが無ければ接続しない
 			Bluefruit.disconnect(conn_handle);
@@ -891,8 +951,10 @@ void client_connect_callback(uint16_t conn_handle)
  */
 void client_disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
-  (void) conn_handle;
-  (void) reason;
+	(void) conn_handle;
+	(void) reason;
+	// 接続したよフラグを下げる
+	child_conn_flag = false;
 }
 
 

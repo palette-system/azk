@@ -13,9 +13,8 @@ BleKeyboardJIS::BleKeyboardJIS(void)
 void BleKeyboardJIS::begin(char *deviceName)
 {
     uint8_t  child_file_data[16]; // 前に接続した子端末のアドレスデータ
-    char addr_path[16];
+    char addr_path[] = "/child";
     short r;
-    sprintf(addr_path, "/child");
 
     if (ble_type == 1) { // 分割：親
       Bluefruit.begin(1, 1); // HID (1 接続) , BLE クライアント(1 接続)
@@ -32,6 +31,7 @@ void BleKeyboardJIS::begin(char *deviceName)
         // 頭6バイトが自分のアドレスなら子端末のアドレスを取得
         child_addr_flag = true; // 子供アドレス取得したフラグ
         addr_copy(child_addr, &child_file_data[6]); // 子供アドレス保持
+        child_input_length = (child_file_data[12] << 8) + child_file_data[13]; // 子供のキー数
       } else {
         // 頭6バイトが自分のアドレスじゃない場合、別の端末の設定をインポートしたデータなので削除
         common_cls.remove_file(addr_path);
@@ -39,6 +39,9 @@ void BleKeyboardJIS::begin(char *deviceName)
     }
 
     if (ble_type == 1) { // 分割：親
+      // Configure DIS client
+      clientDis.begin();
+
       // Init BLE Central Uart Serivce
       clientUart.begin();
       clientUart.setRxCallback(bleuart_rx_callback);
@@ -64,8 +67,10 @@ void BleKeyboardJIS::begin(char *deviceName)
     }
 
     // Configure and Start Device Information Service
-    bledis.setManufacturer("AZKEYBOARD");
-    bledis.setModel("AZK");
+    char  model_name[16];
+    sprintf(model_name, "N%03d", (host_input_length < 1000)? host_input_length: 999); // N = nrf52
+    bledis.setManufacturer("PALETTE");
+    bledis.setModel(model_name);
     uint8_t sig = 0x02;
     uint16_t hid_vid = 0xe502;
     uint16_t hid_pid = 0x0200;
