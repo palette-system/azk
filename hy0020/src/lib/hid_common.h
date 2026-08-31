@@ -62,6 +62,7 @@ enum via_command_id {
     // ステータス取得
     id_get_firmware_status                  = 0x60,
     id_get_ble_info                         = 0x61,
+    id_get_device_name                      = 0x62,
 
     // 分割：子 から 分割：親 に送るコマンド
     id_send_child_key                       = 0x70,

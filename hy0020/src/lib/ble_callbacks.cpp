@@ -702,6 +702,23 @@ void HidrawCallbackExec(int data_length) {
 			return;
 
 		}
+		case id_get_device_name: {
+			// BLE デバイス名返却
+			memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
+		    m = remap_buf[1]; // 取得開始バイト
+			send_buf[0] = id_get_device_name; // BLE デバイス名返却
+			send_buf[1] = strlen(keyboard_name_str); // デバイス名サイズ
+			send_buf[2] = m; // レスポンスに渡したデータが何バイト目からのデータか
+			for (i=0; i<(OUTPUT_REPORT_RAW_MAX_LEN - 3); i++) {
+				if ((m + i) < send_buf[1]) { // デバイス名文字数をオーバーしていない
+					send_buf[3 + i] = keyboard_name_str[m + i];
+				} else {
+					send_buf[3 + i] = 0x00;
+				}
+			}
+			return;
+
+		}
 		case id_get_cst816: {
 			// トラックパッド CST816 情報取得
 		    m = remap_buf[1]; // 読み込みに行くアドレス取得
@@ -831,6 +848,8 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
 	// 子供端末であれば接続要求する
 	if (addr_check(child_addr, report->peer_addr.addr)) {
 		Bluefruit.Central.connect(report); // 接続要求
+	} else {
+		Bluefruit.Scanner.resume();
 	}
 
   } else if (strlen(child_name)) {
@@ -927,6 +946,7 @@ void client_connect_callback(uint16_t conn_handle)
 		Bluefruit.Scanner.stop();
 		// 同じアドレスチェックするリストをクリア
 		free(check_addr);
+		check_addr = NULL;
 	} else {
 		// Uart サービスが無ければ接続しない
 		Bluefruit.disconnect(conn_handle);
