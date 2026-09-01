@@ -3,8 +3,6 @@
 
 #include <SoftwareSerial.h>
 
-// remap用 キー入力テスト中フラグ
-uint16_t  remap_input_test;
 
 // キーが押された時の設定
 uint16_t setting_length;
@@ -19,6 +17,14 @@ uint8_t led_num_length;
 uint8_t key_matrix_length;
 
 // hid
+int8_t ble_type; //0 = シングル / 1 = 分割(親) / 2 = 分割(小)
+uint8_t  my_addr[6]; // 自分のアドレス
+bool child_addr_flag; // 分割子供アドレス設定の有無
+uint8_t child_addr[6]; // 分割子供アドレス
+char *child_name; // 分割子供端末名
+bool child_conn_flag; // 分割：子と接続状態かどうか
+int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
+uint16_t ble_scan_handle; // スキャン中に接続した接続のハンドル
 uint16_t hid_vid;
 uint16_t hid_pid;
 uint16_t hid_conn_handle = 0; // ペアリングしている機器のハンドルID
@@ -37,7 +43,7 @@ int status_pin = -1;
 short status_index = 0;
 
 // ステータスLED今0-9
-int status_led_bit = 0;
+short status_led_bit = 0;
 
 // ステータスLED表示モード
 volatile int8_t status_led_mode;
@@ -72,7 +78,9 @@ SoftwareSerial *irSerial;
 
 
 // 入力キーの数
-int key_input_length;
+short host_input_length;
+short child_input_length;
+short key_input_length;
 
 // キースキャンループの待ち時間
 short loop_delay;
@@ -96,6 +104,9 @@ short hall_range_max;
 // holdの設定
 uint8_t hold_type;
 uint8_t hold_time;
+
+// 分割：子から受け取ったキー入力データ
+uint8_t child_input_key[CHILD_INPUT_KEY_MAX];
 
 // 押している最中のキーデータ
 press_key_data press_key_list[PRESS_KEY_MAX];
@@ -133,6 +144,7 @@ short *direct_list;
 short *touch_list;
 short *hall_list;
 short *hall_offset;
+short read_type;
 
 // 入力ピン情報 I2C
 short *ioxp_list;
@@ -155,16 +167,12 @@ bool seri_logic;
 // シリアル通信（赤外線）設定
 uint16_t seri_input[SERIAL_INPUT_MAX];
 uint8_t seri_cmd;
-uint8_t seri_buf[12];
+uint8_t seri_buf[SERIAL_BUF_SIZE];
 uint8_t seri_index;
 uint8_t seri_setting[12];
 uint8_t seri_up_buf[16];
 uint16_t seri_setting_del;
 
-// Nubkey の設定
-nubkey_option *nubopt;
-short nubopt_len;
-int8_t nubkey_status;
 
 // AZTRACKPAD 用
 short aztrsc_x;
@@ -249,6 +257,8 @@ void AzCommon::common_start() {
         press_key_list[i].layer_id = -1;
         press_key_list[i].unpress_time = -1;
     }
+    // ble アドバタイズ端末スキャンフラグ
+    ble_scan_flag = 0;
     // ioエキスパンダピン
     ioxp_sda = -1;
     ioxp_scl = -1;
@@ -265,15 +275,29 @@ void AzCommon::common_start() {
     }
     // マウスのスクロールボタンが押されているか
     mouse_scroll_flag = false;
-    // if (AZ_DEBUG_MODE) Serial.begin(115200);
     // aztoolで作業中かどうか
     aztool_mode_flag = 0;
-    // remap用 キー入力テスト中フラグ
-    remap_input_test = 0;
     // キーボードのステータス
     keyboard_status = 0;
     // RGBLEDのステータス
     status_led_mode_last = -1;
+    // 子端末のアドレスを設定したか
+    child_addr_flag = false;
+    // 小端末と接続状態かどうか
+    child_conn_flag = false;
+    // 分割：子のアドレス
+    memset(child_addr, 0x00, 6);
+    // 分割：子の押されているキーデータ
+    memset(child_input_key, 0x00, CHILD_INPUT_KEY_MAX);
+    // ファイルから分割：子のキー数を取得
+    char addr_path[] = "/child";
+    uint8_t read_buf[16];
+    i = common_cls.read_file(addr_path, read_buf);
+    if (i > 0) {
+        child_input_length = (read_buf[12] << 8) + read_buf[13]; // 子供のキー数
+    } else {
+        child_input_length = 0;
+    }
 }
 
 // ESP32 再起動
@@ -314,6 +338,8 @@ int split_num(const char *c) {
 
 // JSONデータを読み込む
 void AzCommon::load_setting_json() {
+    int i, j, k, m, n, o, p, r;
+
     // セッティングJSONを保持する領域
     JsonDocument setting_doc;
     JsonObject setting_obj;
@@ -372,6 +398,11 @@ void AzCommon::load_setting_json() {
 
     // HID 設定
     String hidstr;
+    if (setting_obj["ble"].is<int>()) {
+        ble_type = setting_obj["ble"].as<signed int>();
+    } else {
+        ble_type = 0;
+    }
     if (setting_obj["vendorId"].is<String>()) {
         hidstr = setting_obj["vendorId"].as<String>();
         hid_vid = (uint16_t) strtol(&hidstr[2], NULL, 16);
@@ -384,6 +415,25 @@ void AzCommon::load_setting_json() {
     } else {
         hid_pid = BLE_HID_PID;
     }
+
+    // 分割キーボードの子供名
+    String cname;
+    if (setting_obj["child"].is<String>()) {
+        cname = setting_obj["child"].as<String>();
+        m = cname.length();
+        child_name = (char *)malloc(m + 1);
+        cname.toCharArray(child_name, m + 1);
+    } else {
+        child_name = (char *)malloc(2);
+        memset(child_name, 0x00, 2);
+    }
+
+    // 分割キーボードの子供キー数
+    // if (setting_obj["chlen"].is<int>()) {
+    //     child_input_length = setting_obj["chlen"].as<signed int>();
+    // } else {
+    //     child_input_length = 0;
+    // }
 
     // デフォルトのレイヤー番号設定
     default_layer_no = setting_obj["default_layer"].as<signed int>();
@@ -402,6 +452,7 @@ void AzCommon::load_setting_json() {
             hold_time = setting_obj["hold"]["time"].as<signed int>();
         }
     }
+
     // ホールセンサーのアナログ値読み取り範囲
     if (setting_obj["hall_range_min"].is<int>()) {
         hall_range_min = setting_obj["hall_range_min"].as<signed int>();
@@ -413,8 +464,8 @@ void AzCommon::load_setting_json() {
     } else {
         hall_range_max = HALL_RANGE_MAX_DEFAULT;
     }
+
     // 入力ピン情報取得
-    int i, j, k, m, n, o, p, r;
     col_len = setting_obj["keyboard_pin"]["col"].size();
     row_len = setting_obj["keyboard_pin"]["row"].size();
     direct_len = setting_obj["keyboard_pin"]["direct"].size();
@@ -435,6 +486,12 @@ void AzCommon::load_setting_json() {
     for (i=0; i<touch_len; i++) {
         touch_list[i] = setting_obj["keyboard_pin"]["touch"][i].as<signed int>();
     }
+    if (setting_obj["keyboard_pin"]["read_type"].is<int>()) {
+        read_type = setting_obj["keyboard_pin"]["read_type"].as<signed int>(); // 0=シングルマトリックス / 1=ダブルマトリックス
+    } else {
+        read_type = 0; // デフォルトシングルマトリックス
+    }
+
 
     // 磁気スイッチ入力ピン情報取得
     if (setting_obj["keyboard_pin"]["hall"].is<JsonObject>()) {
@@ -701,54 +758,6 @@ void AzCommon::load_setting_json() {
         i2copt_len = 0;
     }
 
-    // Nubkey オプション
-    if (setting_obj["nubkey"].is<JsonArray>() && setting_obj["nubkey"].size()) {
-        nubopt_len = setting_obj["nubkey"].size();
-        nubopt = new nubkey_option[nubopt_len]; // Nubkeyの設定を保持する変数
-        for (i=0; i<nubopt_len; i++) {
-            // 動作タイプ
-            if (setting_obj["nubkey"][i]["type"].is<int>()) {
-                nubopt[i].action_type = setting_obj["nubkey"][i]["type"].as<signed int>();
-            } else {
-                nubopt[i].action_type = 0;
-            }
-            // ピン
-            if (setting_obj["nubkey"][i]["pin"] && setting_obj["nubkey"][i]["pin"].size()) {
-                nubopt[i].up_pin = setting_obj["nubkey"][i]["pin"][0].as<signed int>();
-                nubopt[i].down_pin = setting_obj["nubkey"][i]["pin"][1].as<signed int>();
-                nubopt[i].left_pin = setting_obj["nubkey"][i]["pin"][2].as<signed int>();
-                nubopt[i].right_pin = setting_obj["nubkey"][i]["pin"][3].as<signed int>();
-            }
-            // 移動速度
-            if (setting_obj["nubkey"][i]["spx"].is<int>()) {
-                nubopt[i].speed_x = setting_obj["nubkey"][i]["spx"].as<signed int>();
-            } else {
-                nubopt[i].speed_x = 8000;
-            }
-            if (setting_obj["nubkey"][i]["spy"].is<int>()) {
-                nubopt[i].speed_y = setting_obj["nubkey"][i]["spy"].as<signed int>();
-            } else {
-                nubopt[i].speed_y = 8000;
-            }
-            // 中央位置
-            nubopt[i].rang_x = 0;
-            nubopt[i].rang_y = 0;
-            // 動かすアクチュエーションポイント
-            if (setting_obj["nubkey"][i]["sp"].is<int>()) {
-                nubopt[i].start_point = setting_obj["nubkey"][i]["sp"].as<signed int>();
-            } else {
-                nubopt[i].start_point = 1300;
-            }
-            // タップと判定する時間
-            if (setting_obj["nubkey"][i]["tt"].is<int>()) {
-                nubopt[i].tap_time = setting_obj["nubkey"][i]["tt"].as<signed int>();
-            } else {
-                nubopt[i].tap_time = 30;
-            }
-        }
-    } else {
-        nubopt_len = 0;
-    }
 
 
     // key_input_length = 16 * ioxp_len;
@@ -909,7 +918,7 @@ void AzCommon::get_keymap(JsonObject setting_obj) {
 
 // JSONデータからキーマップの情報を読み込む(1キー分)
 void AzCommon::get_keymap_one(JsonObject json_obj, setting_key_press *press_obj, uint16_t lnum, uint16_t knum) {
-    int j, k, m, at, s;
+    int j, m;
     String text_str;
     setting_normal_input normal_input;
     setting_layer_move layer_move_input;
@@ -936,13 +945,24 @@ void AzCommon::get_keymap_one(JsonObject json_obj, setting_key_press *press_obj,
         press_obj->rapid_trigger = RAPID_TRIGGER_DEFAULT;
     }
     // ボタンの動作
-    press_obj->action_type = json_obj["action_type"].as<signed int>();
+    if (json_obj["action_type"].is<int>()) {
+        press_obj->action_type = json_obj["action_type"].as<signed int>();
+    } else if (json_obj["at"].is<int>()) { // at に略されてる場合もある
+        press_obj->action_type = json_obj["at"].as<signed int>();
+    } else {
+        // デフォルトは 1.通常入力
+        press_obj->action_type = 1;
+    }
     if (press_obj->action_type == 1 || press_obj->action_type == 12) {
         // 1.通常入力 / 12.コマンド入力
-        normal_input.key_length = json_obj["key"].size();
-        normal_input.key = new uint16_t[normal_input.key_length];
-        for (j=0; j<normal_input.key_length; j++) {
-                normal_input.key[j] = json_obj["key"][j].as<signed int>();
+        if (json_obj["key"].is<JsonArray>()) {
+            normal_input.key_length = json_obj["key"].size();
+            normal_input.key = new uint16_t[normal_input.key_length];
+            for (j=0; j<normal_input.key_length; j++) {
+                    normal_input.key[j] = json_obj["key"][j].as<signed int>();
+            }
+        } else {
+            normal_input.key_length = 0;
         }
         // 連打設定
         if (json_obj["repeat_interval"].is<int>()) {
@@ -1061,8 +1081,7 @@ bool AzCommon::create_setting_json() {
 
 // I2C機器の初期化(戻り値：増えるキーの数)
 int AzCommon::i2c_setup(int p, i2c_option *opt, short map_set) {
-    int i, j, k, m, x;
-    int r = 0;
+    int i, j, k, x;
     int set_type[16];
     i2c_map i2cmap_obj;
     i2c_ioxp i2cioxp_obj;
@@ -1168,18 +1187,15 @@ int AzCommon::i2c_setup(int p, i2c_option *opt, short map_set) {
 // キーの入力ピンの初期化
 void AzCommon::pin_setup() {
     // output ピン設定 (colで定義されているピンを全てoutputにする)
-    int c, i, j, m, x;
-    int mx, my;
+    int c, i, x;
     int offset_buf[10][hall_len];
-    char nubkey_path[16];
-    nubkey_setting_data nub_data;
 
     for (i=0; i<col_len; i++) {
-        if (!AZ_DEBUG_MODE || (col_list[i] != 1 && col_list[i] != 3)) pinMode(col_list[i], OUTPUT);
+        pinMode(col_list[i], OUTPUT);
     }
     // row で定義されているピンを全てinputにする
     for (i=0; i<row_len; i++) {
-        if (!AZ_DEBUG_MODE || (row_list[i] != 1 && row_list[i] != 3)) pinMode(row_list[i], INPUT_PULLUP);
+        pinMode(row_list[i], INPUT_PULLUP);
     }
     // direct(スイッチ直接続)で定義されているピンを全てinputにする
     for (i=0; i<direct_len; i++) {
@@ -1211,19 +1227,9 @@ void AzCommon::pin_setup() {
 
     // キー数の計算
     key_input_length = (col_len * row_len) + direct_len + touch_len + hall_len;
-
-    // Nubkey 初期化
-    nubkey_status = 0;
-    for (i=0; i<nubopt_len; i++) {
-        // ピンの初期化
-        pinMode(nubopt[i].up_pin , INPUT_PULLUP);
-        pinMode(nubopt[i].down_pin , INPUT_PULLUP);
-        pinMode(nubopt[i].left_pin , INPUT_PULLUP);
-        pinMode(nubopt[i].right_pin , INPUT_PULLUP);
-        // キーの数を加算
-        if (nubopt[i].action_type == 0) {
-            key_input_length++;
-        }
+    if (read_type) {
+        // ダブルマトリックス の場合COL×ROWが2倍になる
+        key_input_length += col_len * row_len;
     }
 
     // I2C初期化
@@ -1256,26 +1262,28 @@ void AzCommon::pin_setup() {
         irSerial->begin(seri_hz);
     }
     // シリアル通信(赤外線)入力データの初期化
-    memset(&seri_input, 0x00, sizeof(seri_input));
-    memset(&seri_buf, 0x00, sizeof(seri_buf));
-    memset(&seri_setting, 0x00, sizeof(seri_setting));
-    memset(&seri_up_buf, 0x00, sizeof(seri_up_buf));
+    memset(seri_input, 0x00, sizeof(seri_input));
+    memset(seri_buf, 0x00, sizeof(seri_buf));
+    memset(seri_setting, 0x00, sizeof(seri_setting));
+    memset(seri_up_buf, 0x00, sizeof(seri_up_buf));
     seri_cmd = 0;
     seri_setting_del = 0;
-    
+
+    host_input_length = key_input_length;
+    key_input_length += child_input_length;
     
 
     // 動作電圧チェック用ピン
     // power_read_pin = 36;
 
-    input_key = new char[key_input_length];
-    input_key_last = new char[key_input_length];
+    input_key = new bool[key_input_length];
+    input_key_last = new bool[key_input_length];
     key_count = new uint16_t[key_input_length];
     key_point = new short[key_input_length];
     // リセット
     for (i=0; i<key_input_length; i++) {
-        this->input_key[i] = 0; // 今回のキースキャンデータ
-        this->input_key_last[i] = 0; // 前回のキースキャンデータ
+        this->input_key[i] = false; // 今回のキースキャンデータ
+        this->input_key_last[i] = false; // 前回のキースキャンデータ
         this->key_count[i] = 0; // 打鍵数
         this->key_point[i] = -1; // キーごとの設定ID
     }
@@ -1340,11 +1348,9 @@ setting_key_press AzCommon::get_key_setting(int layer_id, int key_num, short pre
 tracktall_pim447_data pim447_data_old;
 
 
-int AzCommon::i2c_read(int p, i2c_option *opt, char *read_data) {
-    int e, i, j, k, m, n, r, x, y;
+int AzCommon::i2c_read(int p, i2c_option *opt, bool *read_data) {
+    int e, i, j, k, m, n = 0, r, x, y;
     unsigned long now_time;
-    unsigned long start_time;
-    unsigned long end_time;
     uint8_t wcheck, hcheck;
     uint16_t rowput_mask;
     int rowput_len;
@@ -1709,8 +1715,8 @@ void AzCommon::serial_read() {
                     seri_buf[seri_index] = read_buf;
                 } else { // 4バイト目で処理
                     seri_buf[seri_index] = read_buf;
-                    for (i=5; i<sizeof(seri_buf); i++) seri_buf[i] = 0x00;
-                    memcpy(&seri_setting, &seri_buf, sizeof(seri_buf));
+                    for (i=5; i<SERIAL_BUF_SIZE; i++) seri_buf[i] = 0x00;
+                    memcpy(&seri_setting, &seri_buf, SERIAL_BUF_SIZE);
                     seri_setting_del = 200;
                     seri_cmd = 0;
                 }
@@ -1739,91 +1745,22 @@ void AzCommon::serial_read() {
 
 }
 
-// Nubkey 読み込み
-int AzCommon::nubkey_read(int p, nubkey_option *opt, char *read_data) {
-    int r = 0;
-    int a_up, a_down, a_left, a_right;
-    int x, y, w, mx, my;
-    if (nubkey_status != 0) {
-        if (nubkey_status == 1) {
-            // 中心位置設定中
-            nubkey_position_read(opt);
-        }
-        if (opt->action_type == 0) r++;
-        return r;
-    }
-    if (opt->action_type == 0) {
-        read_data[p] = 0;
-        a_up = analogRead(opt->up_pin);
-        a_down = analogRead(opt->down_pin);
-        a_left = analogRead(opt->left_pin);
-        a_right = analogRead(opt->right_pin);
-        x = a_right - a_left - opt->rang_x;
-        y = a_down - a_up - opt->rang_y;
-        w = (a_up + a_down + a_left + a_right) / 4;
-        if (opt->enable_time < opt->tap_time && w < 1300) {
-            opt->enable_time++;
-        } else if (w < opt->start_point) {
-            mx = (x * (opt->start_point - w)) / opt->speed_x;
-            my = (y * (opt->start_point - w)) / opt->speed_y;
-            press_mouse_list_push(0x2000, 5, mx, my, 0, 0, 100); // action_type : 5 = マウス移動
-        } else {
-            // 短い時間押されていたらタップされたと判定してキーをONにする
-            if (opt->enable_time > 0 && opt->enable_time < opt->tap_time) {
-                read_data[p] = 1;
-            }
-            opt->enable_time = 0;
-        }
-        r++;
-        p++;
-    }
-    return r;
-}
-
-// Nubkey ポジション設定情報初期化
-void AzCommon::nubkey_position_init() {
-    int i;
-    for (i=0; i<nubopt_len; i++) {
-        nubopt[i].read_x_min = 0;
-        nubopt[i].read_x_max = 0;
-        nubopt[i].read_y_min = 0;
-        nubopt[i].read_y_max = 0;
-    }
-}
-
-
-// Nubkey ポジション設定中動作
-void AzCommon::nubkey_position_read(nubkey_option *opt) {
-    int a_up, a_down, a_left, a_right;
-    int x, y;
-    a_up = analogRead(opt->up_pin);
-    a_down = analogRead(opt->down_pin);
-    a_left = analogRead(opt->left_pin);
-    a_right = analogRead(opt->right_pin);
-    x = a_right - a_left;
-    y = a_down - a_up;
-    if (opt->read_x_min > x) opt->read_x_min = x;
-    if (opt->read_x_max < x) opt->read_x_max = x;
-    if (opt->read_y_min > y) opt->read_y_min = y;
-    if (opt->read_y_max < y) opt->read_y_max = y;
-}
-
 
 // 現在のキーの入力状態を取得
 void AzCommon::key_read(void) {
-    int a, i, j, m, n, s;
-    int act, acp, acpt, rap;
+    short a, i, j, m, n;
+    short acp, rap;
     setting_key_press *k;
     n = 0;
     // ダイレクト入力の取得
     for (i=0; i<direct_len; i++) {
-        input_key[n] = !digitalRead(direct_list[i]);
+        input_key[n] = (!digitalRead(direct_list[i]));
         n++;
     }
     // タッチ入力の取得
     for (i=0; i<touch_len; i++) {
         // タッチ機能がないESPでは常に0
-        input_key[n] = 0;
+        input_key[n] = false;
         n++;
     }
     // 磁気スイッチの取得
@@ -1831,14 +1768,10 @@ void AzCommon::key_read(void) {
         // 設定からアクチュエーションポイント、ラピットトリガー取得
         if (key_point[n] >= 0) {
             k = &setting_press[key_point[n]]; // キーの設定取得
-            act = k->action_type;
-            acpt = k->actuation_type;
             acp = k->actuation_point;
             rap = k->rapid_trigger;
         } else {
             // 設定がなければデフォルト値
-            act = 0;
-            acpt = ACTUATION_TYPE_DEFAULT;
             acp = ACTUATION_POINT_DEFAULT;
             rap = RAPID_TRIGGER_DEFAULT;
         }
@@ -1848,156 +1781,54 @@ void AzCommon::key_read(void) {
         if (m > 255) m = 255;
         if (m < 0) m = 0;
         input_key_analog[i] = m;
-        if (acpt == 0) {
-            // 静的なアクチュエーションポイントとラピットトリガー
-            // 固定位置で判定
-            if (input_key_analog[i] > acp) { // アクチュエーションポイントを超えたらON
-                input_key[n] = 1;
-            } else if (input_key_analog[i] < rap) { // ラピットトリガーを下回ったらOFF
-                input_key[n] = 0;
-            } else { // 中間地点にいる場合は前のステータスを引き継ぐ
-                input_key[n] = input_key_last[n];
-            }
-
-        } else if (acpt == 1) {
-            // 動的なアクチュエーションポイントとラピットトリガー
-            // (移動距離で判定)
-            if (input_key_last[n] == 0) { // 前回が未入力
-                if (input_key_analog[i] > (analog_stroke_most[i] + acp) || input_key_analog[i] > 240) {
-                    // アクチュエーションポイントを超えたらON
-                    input_key[n] = 1;
-                    analog_stroke_most[i] = input_key_analog[i]; // ONになった位置を保持
-                } else {
-                    input_key[n] = 0; // アクチュエーションポイント超えるまではOFFのまま
-                    // 離されたらOFFになった位置を更新する
-                    if (analog_stroke_most[i] > input_key_analog[i]) {
-                        analog_stroke_most[i] = input_key_analog[i];
-                    }
-
-                }
-            } else if (input_key_last[n] == 1) { // 前回がON
-                if (input_key_analog[i] < (analog_stroke_most[i] - rap) || input_key_analog[i] < 12) { // 最も押し込んだ位置からラピットトリガー分戻ったらリセット
-                    input_key[n] = 0;
-                    analog_stroke_most[i] = input_key_analog[i]; // OFFになった位置を保持
-                } else {
-                    input_key[n] = 1; // ラピットトリガーを下回るまではONのまま
-                    // 深く押し込まれたらONになった位置を更新する
-                    if (analog_stroke_most[i] < input_key_analog[i]) {
-                        analog_stroke_most[i] = input_key_analog[i];
-                    }
-                }
-            } else {
-                input_key[n] = 0;
-            }
-
-        } else if (acpt == 2) {
-            // 2段階入力
-            if (input_key_last[n] == 0) { // 前回が未入力
-                if (input_key_analog[i] > 210) {
-                    // 2段目まで押し込まれたら2段目にする
-                    input_key[n] = 3; // 2段目ON
-                    analog_stroke_most[i] = 0; // カウンタリセット
-
-                } else if (input_key_analog[i] > 40) {
-                    // 1段目の深さの場合
-                    analog_stroke_most[i]++; // 超えたよ数をカウントしていき、5回を超えたらONにする(素早い入力の時は1段目を飛ばすため)
-                    if (analog_stroke_most[i] > 5) {
-                        input_key[n] = 2; // 1段目ON
-                    } else {
-                        input_key[n] = 0;
-                    }
-                } else {
-                    // 浅い位置にいればカウントもリセット
-                    input_key[n] = 0;
-                    analog_stroke_most[i] = 0;
-                }
-            } else if (input_key_last[n] == 2) { // 前回が1段目ON
-                if (input_key_analog[i] > 210) {
-                    // 2段目の深さまで押し込まれた
-                    input_key[n] = 3; // 2段目ON
-                    analog_stroke_most[i] = 0; // カウンタリセット
-                } else if (input_key_analog[n] < 30) {
-                    // 浅い位置に戻った
-                    input_key[n] = 0; // OFF
-                    analog_stroke_most[i] = 0; // カウンタリセット
-                } else {
-                    input_key[n] = 2;
-                    
-                }
-                
-            } else if (input_key_last[n] == 3) { // 前回が2段目ON
-                if (input_key_analog[i] < 30) {
-                    // 浅い位置に戻った
-                    input_key[n] = 0; // OFF
-                    analog_stroke_most[i] = 0; // カウンタリセット
-
-                } else if (input_key_analog[i] < 200) {
-                    // 2段目まで戻った
-                    analog_stroke_most[i]++; // 戻ったよ数をカウントしていき、5回を超えたらONにする(素早い入力の時は1段目を飛ばすため)
-                    if (analog_stroke_most[i] > 5) {
-                        input_key[n] = 2; // 2段目ON　＋　1段目OFF
-                        analog_stroke_most[i] = 0; // カウンタリセット
-                    } else {
-                        input_key[n] = 3;
-                    }
-                } else {
-                    // 深い位置
-                    input_key[n] = 3;
-                    analog_stroke_most[i] = 0; // カウンタリセット
-                }
-            }
-
+        // 静的なアクチュエーションポイントとラピットトリガー
+        // 固定位置で判定
+        if (input_key_analog[i] > acp) { // アクチュエーションポイントを超えたらON
+            input_key[n] = true;
+        } else if (input_key_analog[i] < rap) { // ラピットトリガーを下回ったらOFF
+            input_key[n] = false;
+        } else { // 中間地点にいる場合は前のステータスを引き継ぐ
+            input_key[n] = input_key_last[n];
         }
-        // if (analog_stroke_most[i] < input_key_analog[i]) analog_stroke_most[i] = input_key_analog[i];
-        /*
-        if (input_key_last[n] == 0) { // 前回が未入力
-            if (input_key_analog[i] > acp) { // アクチュエーションポイントを超えたらON
-                input_key[n] = 1;
-            } else {
-                input_key[n] = 0;
-            }
-        } else if (input_key_last[n] == 1) { // 前回が入力
-            if (input_key_analog[i] < rap && input_key_analog[i] < (analog_stroke_most[i] - 10)) { // ラピットトリガーを下回ったらOFF( && 最も押し込んだ所から最低-10 以上戻ったら)
-                if (act == 10) {
-                    input_key[n] = 0;
-                    analog_stroke_most[i] = 0; // 最も押し込んだ時のアナログ値
-                } else {
-                    input_key[n] = 2;
-                }
-            } else {
-                input_key[n] = 1; // ラピットトリガーを下回るまではONのまま
-            }
-        } else if (input_key_last[n] == 2) { // 前回がラピットトリガーOFFしてリセット待ち
-            if (a < (hall_offset[i] + 10) // デフォルトの値を下回ったらリセット
-                || ( input_key_analog[i] < acp && input_key_analog[i] < (rap - 50))) { // ラピットトリガーから30下がってたらリセット(アクチュエーションポイントより深い場合はリセットしない)
-                analog_stroke_most[i] = 0; // 最も押し込んだ時のアナログ値
-                input_key[n] = 0; // 今のステータス
-            } else {
-                input_key[n] = 2; // リセットするまではリセット待ちのまま
-            }
-        } else {
-            input_key[n] = 0;
-        }*/
-
         n++;
     }
     // マトリックス入力の取得
+    if (read_type) {
+        // ダブルマトリックスの場合ピンの初期化
+        for (i=0; i<col_len; i++) pinMode(col_list[i], OUTPUT); // col ピンを全てoutputにする
+        for (i=0; i<row_len; i++) pinMode(row_list[i], INPUT_PULLUP); // row を全てinputにする
+    }
+    // シングルマトリックス
     for (i=0; i<col_len; i++) {
         // 対象のcolピンのみ lowにする
         for (j=0; j<col_len; j++) {
-            if (i == j) { s = 0; } else { s = 1; }
-            if (!AZ_DEBUG_MODE || (col_list[j] != 1 && col_list[j] != 3)) digitalWrite(col_list[j], s);
+            digitalWrite(col_list[j], (i != j));
         }
         delayMicroseconds(50);
         // row の分キー入力チェック
         for (j=0; j<row_len; j++) {
-            input_key[n] = !digitalRead(row_list[j]);
+            input_key[n] = (!digitalRead(row_list[j]));
             n++;
         }
     }
-    // Nubkey 読み込み
-    for (i=0; i<nubopt_len; i++) {
-        n += nubkey_read(n, &nubopt[i], input_key);
+    // ダブルマトリックスの場合col row反転して読み込み
+    if (read_type) {
+        // ダブルマトリックスの場合ピンの初期化
+        for (i=0; i<col_len; i++) pinMode(col_list[i], INPUT_PULLUP); // col ピンを全てoutputにする
+        for (i=0; i<row_len; i++) pinMode(row_list[i], OUTPUT); // row を全てinputにする
+        // シングルマトリックス
+        for (i=0; i<row_len; i++) {
+            // 対象のrowピンのみ lowにする
+            for (j=0; j<row_len; j++) {
+                digitalWrite(row_list[j], (i != j));
+            }
+            delayMicroseconds(50);
+            // col の分キー入力チェック
+            for (j=0; j<col_len; j++) {
+                input_key[n] = (!digitalRead(col_list[j]));
+                n++;
+            }
+        }
     }
     // シリアル通信(赤外線)読み込み
     if ((seri_tx >= 0 || seri_rx >= 0) && seri_hz > 0 ) {
@@ -2007,23 +1838,41 @@ void AzCommon::key_read(void) {
     for (i=0; i<i2copt_len; i++) {
         n += i2c_read(n, &i2copt[i], input_key);
     }
+    // 分割：子のキー入力
+    for (i=host_input_length; i<key_input_length; i++) {
+        // まず分割：子の入力を全部OFFにする
+        input_key[i] = false;
+    }
+    m = child_input_key[0]; // 分割：子で押されているキー数
+    for (i=0; i<m; i++) {
+        a = host_input_length + child_input_key[1 + i]; // 押されているキー番号
+        if (a < key_input_length) input_key[a] = true; // 押されているキーをONにする
+    }
 }
 
 
 // 今回の入力状態を保持
 void AzCommon::key_old_copy(void) {
-    int i;
+    short i;
     for (i=0; i<key_input_length; i++) {
         input_key_last[i] = input_key[i];
     }
 }
 
 
+// キーの状態が変化したかチェック
+bool AzCommon::key_changed(void) {
+    short i;
+    for (i=0; i<key_input_length; i++) {
+        if (input_key_last[i] != input_key[i]) return true;
+    }
+    return false;
+}
 
 
 // マウス移動リストを空にする
 void AzCommon::press_mouse_list_clean() {
-    int i;
+    short i;
     for (i=0; i<PRESS_MOUSE_MAX; i++) {
         press_mouse_list[i].key_num = -1;
         press_mouse_list[i].action_type = 0;

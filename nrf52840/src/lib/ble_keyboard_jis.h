@@ -7,10 +7,6 @@
 #include <bluefruit.h>
 #include "CustamService.h"
 
-// HID 
-extern BLEDis bledis;
-extern BLEHidAdafruit blehid;
-extern BLECustam blecus;
 
 
 // BLEキーボードクラス
@@ -45,6 +41,7 @@ class BleKeyboardJIS
     void releaseAll(void);
     bool onShift(); // Shiftが押されている状態かどうか(物理的に)
     void setConnInterval(int interval_type);
+    void split_send_key(); // 分割：小 の入力キーを親に送る
 };
 
 

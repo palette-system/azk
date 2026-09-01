@@ -14,12 +14,6 @@
 // BLEキーボードクラス
 BleKeyboardJIS bleKeyboard = BleKeyboardJIS();
 
-// 暗記ボタンクラス
-// Ankey ankeycls = Ankey();
-
-// 打鍵カウントクラス
-// Dakey dakeycls = Dakey();
-
 
 // コンストラクタ
 AzKeyboard::AzKeyboard() {
@@ -27,7 +21,7 @@ AzKeyboard::AzKeyboard() {
 
 // キーボード初期化処理
 void AzKeyboard::begin_keyboard() {
-// bluetoothキーボード開始
+    // bluetoothキーボード開始
     bleKeyboard.begin(keyboard_name_str);
 }
 
@@ -50,73 +44,27 @@ void AzKeyboard::start_keyboard() {
     // バッテリーレベル
     // bleKeyboard.setBatteryLevel(100);
 
-    // 打鍵クラス初期化
-    // dakeycls.begin();
-
     press_key_all_clear = -1;
 
      // setCpuFrequencyMhz(80);
 
-  
 }
 
 
 // 前回のキーのステータスと比較して変更があった物だけ処理を実行する
 void AzKeyboard::key_action_exec() {
-    if (remap_input_test) {
-      // Serial.printf("remap_input_test: %d\n", remap_input_test);
-      remap_input_test--;
-      return;
-    }
-    // 暗記データのキー入力中は何もしない
-    // if (ankeycls.ankey_flag == 2) return;
     // キー入力チェック
     int i;
     for (i=0; i<key_input_length; i++) {
         if (common_cls.input_key_last[i] != common_cls.input_key[i]) {
-            if (common_cls.input_key[i] == 1) {
+            if (common_cls.input_key[i]) {
                 // キーが押された
                 key_down_action(i, 0); // 押された時の動作
                 rgb_led_cls.set_led_buf(i, 1); // LED に押したよを送る
-                // ankeycls.key_down(i); // 暗記クラスに押したよを送る(暗記用)
-            } else if (common_cls.input_key[i] == 2) {
-                // 2段入力の 1段目が押された
-                if (common_cls.input_key_last[i] == 3) {
-                    // 前が2段目の入力だった場合は2段目のキーを離す
-                    key_up_action(i, 0); // 離された時の動作
-                    // 1段目のキーを押す
-                    key_down_action(i, 1); // 押された時の動作
-                } else {
-                    // 前が未入力の場合はそのまま1段目のキーを押す
-                    key_down_action(i, 1); // 押された時の動作
-                    rgb_led_cls.set_led_buf(i, 1); // LED に押したよを送る
-                    // ankeycls.key_down(i); // 暗記クラスに押したよを送る(暗記用)
-                }
-            } else if (common_cls.input_key[i] == 3) {
-                // 2段入力の 2段目が押された
-                if (common_cls.input_key_last[i] == 2) {
-                    // 前が1段目入力だったら1段目を離す
-                    key_up_action(i, 1); // 離された時の動作
-                    // 2段目のキーを押す
-                    key_down_action(i, 0); // 押された時の動作
-                } else {
-                    // 前が未入力の場合はそのまま2段目を押す
-                    key_down_action(i, 0); // 押された時の動作
-                    rgb_led_cls.set_led_buf(i, 1); // LED に押したよを送る
-                    // ankeycls.key_down(i); // 暗記クラスに押したよを送る(暗記用)
-                }
-
             } else {
-                // キーは離された
-                if (common_cls.input_key_last[i] == 2) {
-                    // 前が2段入力の 1段目入力だった場合1段目を離す
-                    key_up_action(i, 1); // 離された時の動作
-                } else {
-                    // それ以外は通常のキーを離す
-                    key_up_action(i, 0); // 離された時の動作
-                }
+                // キーが離された
+                key_up_action(i, 0); // 離された時の動作
                 rgb_led_cls.set_led_buf(i, 0); // LED に離したよを送る
-                // ankeycls.key_up(i); // 暗記クラスに離したよを送る(暗記用)
             }
         }
     }
@@ -240,7 +188,6 @@ void AzKeyboard::move_mouse_loop() {
 // 消費電力用ループ
 void AzKeyboard::power_saving_loop() {
     // 省電力状態に戻す
-  // Serial.printf("power_saving_loop: %d, %d, %d\n", hid_power_saving_mode, hid_power_saving_state, hid_state_change_time);
     if (hid_power_saving_mode == 1  // 省電力モードON
          // && aztool_mode_flag == 0 // AZTOOLモード中ではない
          && hid_power_saving_state == 0 // 現在の動作モードが通常モード
@@ -292,7 +239,7 @@ void AzKeyboard::hold_press(int hold, int key_num) {
 
 // キーが押された時の処理
 void AzKeyboard::key_down_action(int key_num, short press_type) {
-    int i, m, k, r;
+    int i, m;
     // 打鍵数カウントアップ
     common_cls.key_count[key_num]++;
     common_cls.key_count_total++;
@@ -386,12 +333,10 @@ void AzKeyboard::key_down_action(int key_num, short press_type) {
         press_key_list_push(action_type, key_num, -1, select_layer_no, -1, press_type);
 
     } else if (action_type == 6) {
-        // 暗記ボタン
-        // ankeycls.ankey_down(select_layer_no, key_num);
         // キー押したよリストに追加
         press_key_list_push(action_type, key_num, -1, select_layer_no, -1, press_type);
 
-    } else if (action_type == 7 /* && ankeycls.ankey_flag == 0 */) {
+    } else if (action_type == 7) {
         // LED設定ボタン(暗記処理中は動作無視)
         m = *key_set.data;
         if (m == 0) {
@@ -411,29 +356,11 @@ void AzKeyboard::key_down_action(int key_num, short press_type) {
             rgb_led_cls.setting_shine_type();
         }
 
-    } else if (action_type == 8 /* && ankeycls.ankey_flag == 0 */) {
+    } else if (action_type == 8) {
         // 打鍵設定ボタン(暗記処理中は動作無視)
-        m = *key_set.data;
-        if (m == 0) {
-            // サーモグラフ表示
-        } else if (m == 1) {
-            // 打鍵数をファイルに保存
-            // dakeycls.save_dakey(0);
-        } else if (m == 2) {
-            // 自動保存設定を変更
-            // dakeycls.set_auto_save_change();
-        } else if (m == 3) {
-            // 打鍵数をファイルに保存
-            // dakeycls.save_dakey(1);
-        }
 
     } else if (action_type == 11) {
         // Nubkey 位置調整ボタン
-        nubkey_status = 1; // 位置調整中に変更
-        // Nubkey の位置取得を空に
-        common_cls.nubkey_position_init();
-        // キー押したよリストに追加
-        press_key_list_push(action_type, key_num, -1, select_layer_no, -1, press_type);
 
     } else if (action_type == 12) {
         // コマンド入力
@@ -510,7 +437,6 @@ void AzKeyboard::key_up_action(int key_num, short press_type) {
             common_cls.press_mouse_list_remove(key_num); // 移動中リストから削除
         } else if (action_type == 6) {
             // 暗記ボタン
-            // ankeycls.ankey_up(press_key_list[i].layer_id, key_num);
         } else if (action_type == 9) {
             // hold ボタン
             // まずは長押し用に押されたボタンを離す
@@ -561,10 +487,6 @@ void AzKeyboard::key_up_action(int key_num, short press_type) {
 
         } else if (action_type == 11) {
             // Nubkey 位置調整ボタン
-            nubkey_status = 0; // 動作中に戻す
-            // Nubkey の位置調整を反映
-            // common_cls.nubkey_position_set();
-            
 
         }
         // スグクリアしない。離したよカウンターカウント開始
@@ -607,8 +529,8 @@ void AzKeyboard::press_data_reset() {
         press_key_list[i].repeat_index = -1;
     }
     for (i=0; i<key_input_length; i++) {
-        common_cls.input_key_last[i] = 0;
-        common_cls.input_key[i] = 0;
+        common_cls.input_key_last[i] = false;
+        common_cls.input_key[i] = false;
     }
     bleKeyboard.releaseAll();
     press_key_all_clear = -1;
@@ -724,8 +646,7 @@ void AzKeyboard::power_sleep_loop() {
 void AzKeyboard::status_led_loop() {
     // ステータスLED
     if (status_pin < 0) return;
-    status_index++;
-    if ((status_index * loop_delay) < 500) return;
+    if (status_index < 500) return;
     status_index = 0;
     if (bleKeyboard.isConnected()) {
         digitalWrite(status_pin, 0);
@@ -738,9 +659,13 @@ void AzKeyboard::status_led_loop() {
 // 定期実行の処理
 void AzKeyboard::loop_exec(void) {
 
+    // ステータスLED更新ループ
+    status_led_loop();
+
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
         delay(1000);
+        status_index += 1000;
         return;
     }
 
@@ -753,9 +678,6 @@ void AzKeyboard::loop_exec(void) {
     // キー入力のアクション実行
     key_action_exec();
 
-    // 暗記ボタン定期処理
-    // ankeycls.loop_exec();
-
     // キー連打処理
     key_repeat_exec();
 
@@ -765,9 +687,6 @@ void AzKeyboard::loop_exec(void) {
     // キー入力クリア処理
     press_data_clear();
 
-    // 打鍵数定期処理(自動保存など)
-    // dakeycls.loop_exec();
-
     // RGB_LEDを制御する定期処理
     rgb_led_cls.rgb_led_loop_exec();
 
@@ -776,9 +695,6 @@ void AzKeyboard::loop_exec(void) {
 
     // 電源スイッチ用ループ処理
     power_sleep_loop();
-
-    // ステータスLED更新ループ
-    status_led_loop();
 
     // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
     while (aztool_mode_flag == 1) {
@@ -796,9 +712,55 @@ void AzKeyboard::loop_exec(void) {
 
     // キーボードリスタート要求を受け取った
     if (aztool_mode_flag == 3) {
+        delay(300);
         common_cls.restart(); // 再起動
     }
 
     delay(loop_delay);
+    status_index += loop_delay;
 
+}
+
+// 定期実行の処理(分割：小用)
+void AzKeyboard::loop_exec_child(void) {
+    // ステータスLED更新ループ
+    status_led_loop();
+
+    // キーボードに接続していなければ何もしない
+    if (!bleKeyboard.isConnected()) {
+        delay(1000);
+        status_index += 1000;
+        return;
+    }
+
+    // 現在のキーの状態を前回部分にコピー
+    common_cls.key_old_copy();
+
+    // 現在のキーの状態を取得
+    common_cls.key_read();
+
+    // キー入力に変更があれば入力状態を送る
+    if (common_cls.key_changed()) {
+        bleKeyboard.split_send_key();
+    }
+
+    // マウス移動処理
+    move_mouse_loop();
+
+    // 電源スイッチ用ループ処理
+    power_sleep_loop();
+
+    // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
+    while (aztool_mode_flag == 1) {
+        delay(100);
+    }
+
+    // キーボードリスタート要求を受け取った
+    if (aztool_mode_flag == 3) {
+        delay(300);
+        common_cls.restart(); // 再起動
+    }
+
+    delay(loop_delay);
+    status_index += loop_delay;
 }

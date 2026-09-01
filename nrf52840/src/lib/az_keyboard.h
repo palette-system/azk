@@ -12,6 +12,7 @@ class AzKeyboard
         void begin_keyboard(); // キーボード初期処理
         void start_keyboard(); // キーボードとして処理開始
         void loop_exec();         // キーボード定期処理
+        void loop_exec_child();   // キーボード定期処理(分割：子用)
         void key_action_exec(); // ステータスが変更されたキーのアクションを実行する
         void key_repeat_exec(); // キー連打処理
         void send_string(char *send_char); // テキストを送信する

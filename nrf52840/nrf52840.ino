@@ -30,9 +30,6 @@ void setup()
     // 設定jsonの読み込み
     common_cls.load_setting_json();
 
-    // キーボード初期処理
-    azkb.begin_keyboard();
-
     // バッテリチャージを 50mA -> 100mA に設定
     // pinMode(PIN_CHARGING_CURRENT, OUTPUT);
     // digitalWrite(PIN_CHARGING_CURRENT, LOW);
@@ -52,6 +49,9 @@ void setup()
     // キーの入力ピンの初期化
     common_cls.pin_setup();
 
+    // キーボード初期処理
+    azkb.begin_keyboard();
+
     // キーボードとして起動
     azkb.start_keyboard();
 }
@@ -60,6 +60,12 @@ void setup()
 void loop() 
 {
     // キーボードモード用ループ
-    azkb.loop_exec();
+    if (ble_type == 2) {
+        // 分割：子 の場合
+        azkb.loop_exec_child();
+    } else {
+        // シングル / 分割：親 の場合
+        azkb.loop_exec();
+    }
 }
 

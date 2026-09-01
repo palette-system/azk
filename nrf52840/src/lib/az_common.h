@@ -44,25 +44,13 @@ using namespace Adafruit_LittleFS_Namespace;
 #define LOOP_DELAY_DEFAULT  5
 
 // ファームウェアのバージョン文字
-#define FIRMWARE_VERSION   "000121"
+#define FIRMWARE_VERSION   "000200"
 
 // EEPROMに保存しているデータのバージョン文字列
-#define EEP_DATA_VERSION    "AZN001"
+#define EEP_DATA_VERSION    "AZN002"
 
 // JSON のファイルパス
 #define SETTING_JSON_PATH "/setting.json"
-
-// 起動回数を保存するファイルのパス
-#define  BOOT_COUNT_PATH  "/boot_count"
-
-// システム情報を保存するファイルのパス
-#define  AZ_SYSTEM_FILE_PATH  "/sys_data"
-
-// 打鍵数を自動保存するかどうかの設定を保存するファイルパス
-#define  KEY_COUNT_AUTO_SAVE_PATH  "/key_count_auto_save"
-
-// デバッグモード 0=OFF / 1=ON
-#define  AZ_DEBUG_MODE 0
 
 // アクチュエーションタイプデフォルト
 #define  ACTUATION_TYPE_DEFAULT  0
@@ -80,6 +68,11 @@ using namespace Adafruit_LittleFS_Namespace;
 // シリアル通信で入力されたキーのステータス(16ビット×16＝0～255キー)
 #define  SERIAL_INPUT_MAX  16
 
+// シリアル通信用バッファのサイズ
+#define  SERIAL_BUF_SIZE  12
+
+// 分割：子の押されているデータバッファサイズ
+#define  CHILD_INPUT_KEY_MAX  12
 
 // 今押されているボタンの情報
 struct press_key_data {
@@ -207,36 +200,6 @@ struct i2c_option {
     i2c_map *i2cmap;
 };
 
-// Nubkey 設定
-struct nubkey_option {
-    // 基本設定
-    uint8_t action_type; // 動作タイプ
-    uint8_t up_pin; // ホールセンサー上のピン
-    uint8_t down_pin; // ホールセンサー下のピン
-    uint8_t left_pin; // ホールセンサー左のピン
-    uint8_t right_pin; // ホールセンサー右のピン
-    short start_point; // マウス移動が始まる位置
-    short tap_time; // タップと判定する時間
-    short enable_time; // ONになってからの時間
-    // 基準値用
-    short read_x_min; // X の最小
-    short read_x_max; // X の最大
-    short read_y_min; // Y の最小
-    short read_y_max; // Y の最大
-    short rang_x; // X の中心位置
-    short rang_y; // Y の中心位置
-    short speed_x; // X の速度調整
-    short speed_y; // Y の速度調整
-};
-
-// Nubkeyの保存した調整データ
-struct nubkey_setting_data {
-    short read_x_min; // X の最小
-    short read_x_max; // X の最大
-    short read_y_min; // Y の最小
-    short read_y_max; // Y の最大
-};
-
 
 // クラスの定義
 class AzCommon
@@ -259,17 +222,15 @@ class AzCommon
         bool layers_exists(int layer_no); // レイヤーが存在するか確認
         void layer_set(int layer_no); // 現在のレイヤーを指定したレイヤーにする
         setting_key_press get_key_setting(int layer_id, int key_num, short press_type); // 指定したキーの入力設定を取得する
-        int i2c_read(int p, i2c_option *opt, char *read_data); // I2C機器のキー状態を取得
+        int i2c_read(int p, i2c_option *opt, bool *read_data); // I2C機器のキー状態を取得
         void serial_read(); // シリアル通信(赤外線)読み込み
-        int nubkey_read(int p, nubkey_option *opt, char *read_data); // Nubkeyのキー状態を取得
-        void nubkey_position_init(); // Nubkey ポジション設定情報初期化
-        void nubkey_position_read(nubkey_option *opt); // Nubkey ポジション設定中動作
         void key_read(); // 現在のキーの状態を取得
         void key_old_copy(); // 現在のキーの状態を過去用配列にコピー
+        bool key_changed(); // キーの状態が変化したかチェック
         uint8_t *input_key_analog; // 今入力中のアナログ値
         char *analog_stroke_most; // 最も押し込んだ時のアナログ値
-        char *input_key; // 今入力中のキー(ステータス)
-        char *input_key_last; // 最後にチェックした入力中のキー(ステータス)
+        bool *input_key; // 今入力中のキー(ステータス)
+        bool *input_key_last; // 最後にチェックした入力中のキー(ステータス)
         short *key_point; // 入力キーに該当する設定が何番目に入っているか
         uint16_t *key_count; // キー別の打鍵した数
         uint16_t key_count_total;
@@ -282,6 +243,14 @@ class AzCommon
 };
 
 // hid
+extern int8_t ble_type; // 0 = シングル / 1 = 分割(親) / 2 = 分割(小)
+extern uint8_t  my_addr[6]; // 自分のアドレス
+extern bool child_addr_flag; // 分割子供アドレス設定の有無
+extern uint8_t child_addr[6]; // 分割子供アドレス
+extern char *child_name; // 分割子供端末名
+extern bool child_conn_flag; // 分割：子と接続状態かどうか
+extern int8_t ble_scan_flag; // アドバタイズ端末をスキャン中フラグ (0 = 未スキャン / 1 = スキャン中)
+extern uint16_t ble_scan_handle; // スキャン中に接続した接続のハンドル
 extern uint16_t hid_vid;
 extern uint16_t hid_pid;
 extern uint16_t hid_conn_handle; // ペアリングしている機器のハンドルID
@@ -300,7 +269,7 @@ extern int status_pin;
 extern short status_index;
 
 // ステータスLED今0-9
-extern int status_led_bit;
+extern short status_led_bit;
 
 // ステータスLED表示モード
 extern volatile int8_t status_led_mode;
@@ -331,6 +300,7 @@ extern short *direct_list;
 extern short *touch_list;
 extern short *hall_list;
 extern short *hall_offset;
+extern short read_type;
 
 // 入力ピン情報 I2C
 extern short ioxp_sda;
@@ -358,10 +328,6 @@ extern uint8_t seri_setting[12];
 extern uint8_t seri_up_buf[16];
 extern uint16_t seri_setting_del;
 
-// Nubkey 設定
-extern nubkey_option *nubopt;
-extern short nubopt_len;
-extern int8_t nubkey_status;
 
 // AZTRACKPAD 用
 extern short aztrsc_x;
@@ -387,7 +353,9 @@ extern Wirelib wirelib_cls;
 
 
 // 入力キーの数
-extern int key_input_length;
+extern short host_input_length;
+extern short child_input_length;
+extern short key_input_length;
 
 // キースキャンループの待ち時間
 extern short loop_delay;
@@ -411,6 +379,9 @@ extern short hall_range_max;
 // holdの設定
 extern uint8_t hold_type;
 extern uint8_t hold_time;
+
+// 分割：子から受け取ったキー入力データ
+extern uint8_t child_input_key[CHILD_INPUT_KEY_MAX];
 
 // 押している最中のキーデータ
 extern press_key_data press_key_list[PRESS_KEY_MAX];
@@ -439,9 +410,6 @@ extern AzCommon common_cls;
 // 設定JSONオブジェクト
 extern JsonObject setting_obj;
 
-
-// remap用 キー入力テスト中フラグ
-extern uint16_t  remap_input_test;
 
 // キーが押された時の設定
 extern uint16_t setting_length;
