@@ -4,9 +4,6 @@
 
 # 1. 動作確認手順書を参考にarduino開発環境を作成
 https://akizukidenshi.com/catalog/g/g131342/
-```
-https://adafruit.github.io/arduino-board-index/package_adafruit_index.json
-```
 
 <br><br>
 
@@ -41,17 +38,17 @@ AZTOOL<br>
 <a href="https://www.youtube.com/watch?v=YMsCuBXAXsI" target="_bleak">https://www.youtube.com/watch?v=YMsCuBXAXsI</a><br>
 
 
-
-# 下記のファイルの g_ADigitalPinMap で digitalWrite とかで使用する番号の定義がある
-```
-C:\Users\user\AppData\Local\Arduino15\packages\adafruit\hardware\nrf52\1.7.0\variants\feather_nrf52832\variant.cpp
-```
-
 <br><br>
 
 
 # ピン番号
-渡す番号がどのGPIOか g_ADigitalPinMap[] に定義してある。ボードによって中身が違うぽいんだけど、XIAO nRF52832 の定義どこにしてあるのか分からなかったから中に何が入ってるか調べた結果をメモしておく
+渡す番号がどのGPIOか g_ADigitalPinMap[] に定義してある。ボードによって中身が違うぽいんだけど、HY0020 の定義どこにしてあるのか分からなかったから中に何が入ってるか調べた結果をメモしておく
+
+<br>
+```
+C:\Users\user\AppData\Local\Arduino15\packages\adafruit\hardware\nrf52\1.7.0\variants\feather_nrf52832\variant.cpp
+```
+<br>
 
 ```
 const uint32_t g_ADigitalPinMap[] = {
