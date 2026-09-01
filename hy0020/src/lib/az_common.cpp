@@ -43,7 +43,7 @@ int status_pin = -1;
 short status_index = 0;
 
 // ステータスLED今0-9
-int status_led_bit = 0;
+short status_led_bit = 0;
 
 // ステータスLED表示モード
 volatile int8_t status_led_mode;

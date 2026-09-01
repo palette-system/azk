@@ -27,15 +27,10 @@ void BleKeyboardJIS::begin(char *deviceName)
 
     r = common_cls.read_file(addr_path, child_file_data);
     if (r > 0) {
-      if (addr_check(child_file_data, my_addr)) {
-        // 頭6バイトが自分のアドレスなら子端末のアドレスを取得
-        child_addr_flag = true; // 子供アドレス取得したフラグ
-        addr_copy(child_addr, &child_file_data[6]); // 子供アドレス保持
-        child_input_length = (child_file_data[12] << 8) + child_file_data[13]; // 子供のキー数
-      } else {
-        // 頭6バイトが自分のアドレスじゃない場合、別の端末の設定をインポートしたデータなので削除
-        common_cls.remove_file(addr_path);
-      }
+      // 頭6バイトが自分のアドレスなら子端末のアドレスを取得
+      child_addr_flag = true; // 子供アドレス取得したフラグ
+      addr_copy(child_addr, &child_file_data[6]); // 子供アドレス保持
+      child_input_length = (child_file_data[12] << 8) + child_file_data[13]; // 子供のキー数
     }
 
     if (ble_type == 1) { // 分割：親
@@ -179,7 +174,12 @@ void BleKeyboardJIS::set_keyboard_led(uint16_t conn_handle, uint8_t led_bitmap)
 // 接続中かどうかを返す
 bool BleKeyboardJIS::isConnected(void)
 {
-    return (Bluefruit.connected() > 0);
+  short conn_count = Bluefruit.connected();
+  if (ble_type == 1 && child_conn_flag) { // 分割：親 && 子と接続している
+    return (conn_count > 1);
+  } else { // シングル：分割：子
+    return (conn_count > 0);
+  }
 };
 
 

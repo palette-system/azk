@@ -646,13 +646,13 @@ void AzKeyboard::power_sleep_loop() {
 void AzKeyboard::status_led_loop() {
     // ステータスLED
     if (status_pin < 0) return;
-    status_index++;
-    if ((status_index * loop_delay) < 500) return;
+    if (status_index < 500) return;
     status_index = 0;
     if (bleKeyboard.isConnected()) {
-        digitalWrite(status_pin, 0);
-    } else {
         digitalWrite(status_pin, 1);
+    } else {
+        status_led_bit = !status_led_bit;
+        digitalWrite(status_pin, status_led_bit);
     }
 }
 
@@ -660,9 +660,13 @@ void AzKeyboard::status_led_loop() {
 // 定期実行の処理
 void AzKeyboard::loop_exec(void) {
 
+    // ステータスLED更新ループ
+    status_led_loop();
+
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
         delay(1000);
+        status_index += 1000;
         return;
     }
 
@@ -693,9 +697,6 @@ void AzKeyboard::loop_exec(void) {
     // 電源スイッチ用ループ処理
     power_sleep_loop();
 
-    // ステータスLED更新ループ
-    status_led_loop();
-
     // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
     while (aztool_mode_flag == 1) {
         delay(100);
@@ -712,18 +713,24 @@ void AzKeyboard::loop_exec(void) {
 
     // キーボードリスタート要求を受け取った
     if (aztool_mode_flag == 3) {
+        delay(300);
         common_cls.restart(); // 再起動
     }
 
     delay(loop_delay);
+    status_index += loop_delay;
 
 }
 
 // 定期実行の処理(分割：小用)
 void AzKeyboard::loop_exec_child(void) {
+    // ステータスLED更新ループ
+    status_led_loop();
+
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
         delay(1000);
+        status_index += 1000;
         return;
     }
 
@@ -744,9 +751,6 @@ void AzKeyboard::loop_exec_child(void) {
     // 電源スイッチ用ループ処理
     power_sleep_loop();
 
-    // ステータスLED更新ループ
-    status_led_loop();
-
     // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
     while (aztool_mode_flag == 1) {
         delay(100);
@@ -759,4 +763,5 @@ void AzKeyboard::loop_exec_child(void) {
     }
 
     delay(loop_delay);
+    status_index += loop_delay;
 }

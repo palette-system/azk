@@ -269,7 +269,7 @@ extern int status_pin;
 extern short status_index;
 
 // ステータスLED今0-9
-extern int status_led_bit;
+extern short status_led_bit;
 
 // ステータスLED表示モード
 extern volatile int8_t status_led_mode;
