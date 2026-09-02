@@ -20,25 +20,6 @@ Seed nRF52 Boards by Seeed Studio 1.1.10
 選択するボード ＞ Seeed XIAO nRF52840 Plus
 ```
 
-
-# 下記ファイルの BLE_GATT_ATT_MTU_DEFAULT がデフォルト 23 を 35 にしないと 送信する時 20 で通知が行ってしまう
-
-```
-C:\Users\user\AppData\Local\Arduino15\packages\Seeeduino\hardware\nrf52\1.1.10\cores\nRF5\nordic\softdevice\s140_nrf52_7.3.0_API\include\ble_gatt.h
-```
-
-```
-C:\Users\user\AppData\Local\Arduino15\packages\adafruit\hardware\nrf52\1.7.0\cores\nRF5\nordic\softdevice\s132_nrf52_6.1.1_API\include\ble_gatt.h
-```
-
-
-# 下記のファイルの g_ADigitalPinMap で digitalWrite とかで使用する番号の定義がある
-```
-c:\Users\user\AppData\Local\Arduino15\packages\Seeeduino\hardware\nrf52\1.1.10\variants\Seeed_XIAO_nRF52840\variant.cpp
-c:\Users\user\AppData\Local\Arduino15\packages\Seeeduino\hardware\nrf52\1.1.10\variants\Seeed_XIAO_nRF52840\variant.h
-```
-
-
 # ライブラリ
 ```
 ArduinoJson by Benoit Blanchon version 7.4.1
@@ -46,7 +27,6 @@ Adafruit SSD 1306 by Adafruit version 2.5.13
 Adafruit NeoPixel by Adafruit version 1.12.5
 Adafruit MCP23017 Arduino Library by Adafruit version 2.3.2
 ```
-
 
 # hexからuf2出力
 
@@ -56,6 +36,12 @@ python.exe uf2conv.py nrf52840.ino.hex --family 0xADA52840 --convert --output az
 ```
 
 # ピン番号
+下記のファイルの g_ADigitalPinMap で digitalWrite とかで使用する番号の定義がある
+```
+c:\Users\user\AppData\Local\Arduino15\packages\Seeeduino\hardware\nrf52\1.1.10\variants\Seeed_XIAO_nRF52840\variant.cpp
+c:\Users\user\AppData\Local\Arduino15\packages\Seeeduino\hardware\nrf52\1.1.10\variants\Seeed_XIAO_nRF52840\variant.h
+```
+
 渡す番号がどのGPIOか g_ADigitalPinMap[] に定義してある。ボードによって中身が違うぽいんだけど、XIAO nRF52840 の定義どこにしてあるのか分からなかったから中に何が入ってるか調べた結果をメモしておく
 
 ```
