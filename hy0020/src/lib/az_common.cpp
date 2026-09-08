@@ -34,6 +34,7 @@ uint32_t hid_state_change_time = 0; // 最後にステータスを変更した�
 uint16_t hid_interval_normal = 28; // 通常時のBLEインターバル
 uint16_t hid_interval_saving = 80; // 省電力モード時のBLEインターバル
 int hid_saving_time = 0; // 省電力モードに入るまでの時間(ミリ秒)
+int fast_save_file_index;
 
 // 電源ピン番号
 int power_pin = -1;
@@ -145,6 +146,7 @@ short *touch_list;
 short *hall_list;
 short *hall_offset;
 short read_type;
+short touch_read[16];
 
 // 入力ピン情報 I2C
 short *ioxp_list;
@@ -335,6 +337,30 @@ int split_num(const char *c) {
     return String(c).toInt();
 }
 
+// 設定JSON復元
+void AzCommon::recovery_setting_json() {
+    // バックアップファイルがあればこれを復元
+    if(InternalFS.exists(SETTING_JSON_BACKUP_PATH)){
+        // バックアップ ファイル読み込み
+        File fp = InternalFS.open(SETTING_JSON_BACKUP_PATH, FILE_O_READ);
+        uint32_t json_len = fp.size();
+        uint8_t json_data[json_len];
+        fp.read(json_data, json_len);
+        fp.close();
+        // 設定JSON に書き込み
+        write_file(SETTING_JSON_PATH, json_data, json_len);
+        delay(1000);
+        restart(); // 再起動
+        return;
+    }
+    // デフォルトJSON 作成
+    create_setting_json();
+    delay(100);
+    remove_file(KLE_JSON_PATH); // kle.json 削除
+    delay(1000);
+    restart(); // 再起動
+    return;
+}
 
 // JSONデータを読み込む
 void AzCommon::load_setting_json() {
@@ -346,10 +372,8 @@ void AzCommon::load_setting_json() {
 
     // ファイル存在確認
     if(!InternalFS.exists(SETTING_JSON_PATH)){
-        // ファイルが無い場合はデフォルトファイル作り直して再起動
-        create_setting_json();
-        delay(1000);
-        restart(); // 再起動
+        // ファイルが無い場合は設定JSON作り直して再起動
+        recovery_setting_json();
         return;
     }
     // ファイル読み込み
@@ -362,9 +386,8 @@ void AzCommon::load_setting_json() {
     // 読み込み＆パース
     DeserializationError err = deserializeJson(setting_doc, json_data);
     if (err) {
-        create_setting_json();
-        delay(1000);
-        restart();
+        // パース出来なかった場合は設定JSON作り直して再起動
+        recovery_setting_json();
         return;
     }
     // オブジェクトを保持
@@ -372,9 +395,7 @@ void AzCommon::load_setting_json() {
 
     // キーボードタイプは必須なので項目が無ければ設定ファイル作り直し(設定ファイル壊れた時用)
     if (!setting_obj["keyboard_type"].is<String>()) {
-        create_setting_json();
-        delay(1000);
-        restart();
+        recovery_setting_json();
         return;
     }
 
@@ -436,7 +457,11 @@ void AzCommon::load_setting_json() {
     // }
 
     // デフォルトのレイヤー番号設定
-    default_layer_no = setting_obj["default_layer"].as<signed int>();
+    if (setting_obj["default_layer"].is<int>()) {
+        default_layer_no = setting_obj["default_layer"].as<signed int>();
+    } else {
+        default_layer_no = 0;
+    }
 
     // 今選択してるレイヤーをデフォルトに
     select_layer_no = default_layer_no;
@@ -466,32 +491,55 @@ void AzCommon::load_setting_json() {
     }
 
     // 入力ピン情報取得
-    col_len = setting_obj["keyboard_pin"]["col"].size();
-    row_len = setting_obj["keyboard_pin"]["row"].size();
-    direct_len = setting_obj["keyboard_pin"]["direct"].size();
-    touch_len = setting_obj["keyboard_pin"]["touch"].size();
-    col_list = new short[col_len];
-    for (i=0; i<col_len; i++) {
-        col_list[i] = setting_obj["keyboard_pin"]["col"][i].as<signed int>();
-    }
-    row_list = new short[row_len];
-    for (i=0; i<row_len; i++) {
-        row_list[i] = setting_obj["keyboard_pin"]["row"][i].as<signed int>();
-    }
-    direct_list = new short[direct_len];
-    for (i=0; i<direct_len; i++) {
-        direct_list[i] = setting_obj["keyboard_pin"]["direct"][i].as<signed int>();
-    }
-    touch_list = new short[touch_len];
-    for (i=0; i<touch_len; i++) {
-        touch_list[i] = setting_obj["keyboard_pin"]["touch"][i].as<signed int>();
-    }
-    if (setting_obj["keyboard_pin"]["read_type"].is<int>()) {
-        read_type = setting_obj["keyboard_pin"]["read_type"].as<signed int>(); // 0=シングルマトリックス / 1=ダブルマトリックス
+    if (setting_obj["keyboard_pin"].is<JsonObject>()) {
+        if (setting_obj["keyboard_pin"]["col"].is<JsonArray>() && setting_obj["keyboard_pin"]["col"].size()) {
+            col_len = setting_obj["keyboard_pin"]["col"].size();
+            col_list = new short[col_len];
+            for (i=0; i<col_len; i++) {
+                col_list[i] = setting_obj["keyboard_pin"]["col"][i].as<signed int>();
+            }
+        } else {
+            col_len = 0;
+        }
+        if (setting_obj["keyboard_pin"]["row"].is<JsonArray>() && setting_obj["keyboard_pin"]["row"].size()) {
+            row_len = setting_obj["keyboard_pin"]["row"].size();
+            row_list = new short[row_len];
+            for (i=0; i<row_len; i++) {
+                row_list[i] = setting_obj["keyboard_pin"]["row"][i].as<signed int>();
+            }
+        } else {
+            row_len = 0;
+        }
+        if (setting_obj["keyboard_pin"]["direct"].is<JsonArray>() && setting_obj["keyboard_pin"]["direct"].size()) {
+            direct_len = setting_obj["keyboard_pin"]["direct"].size();
+            direct_list = new short[direct_len];
+            for (i=0; i<direct_len; i++) {
+                direct_list[i] = setting_obj["keyboard_pin"]["direct"][i].as<signed int>();
+            }
+        } else {
+            direct_len = 0;
+        }
+        if (setting_obj["keyboard_pin"]["touch"].is<JsonArray>() && setting_obj["keyboard_pin"]["touch"].size()) {
+            touch_len = setting_obj["keyboard_pin"]["touch"].size();
+            touch_list = new short[touch_len];
+            for (i=0; i<touch_len; i++) {
+                touch_list[i] = setting_obj["keyboard_pin"]["touch"][i].as<signed int>();
+            }
+        } else {
+            touch_len = 0;
+        }
+        if (setting_obj["keyboard_pin"]["read_type"].is<int>()) {
+            read_type = setting_obj["keyboard_pin"]["read_type"].as<signed int>(); // 0=シングルマトリックス / 1=ダブルマトリックス
+        } else {
+            read_type = 0; // デフォルトシングルマトリックス
+        }
     } else {
-        read_type = 0; // デフォルトシングルマトリックス
+        col_len = 0;
+        row_len = 0;
+        direct_len = 0;
+        touch_len = 0;
+        read_type = 0;
     }
-
 
     // 磁気スイッチ入力ピン情報取得
     if (setting_obj["keyboard_pin"]["hall"].is<JsonObject>()) {
@@ -1748,7 +1796,7 @@ void AzCommon::serial_read() {
 
 // 現在のキーの入力状態を取得
 void AzCommon::key_read(void) {
-    short a, i, j, m, n;
+    short a, i, j, m, n, p, t;
     short acp, rap;
     setting_key_press *k;
     n = 0;
@@ -1758,10 +1806,25 @@ void AzCommon::key_read(void) {
         n++;
     }
     // タッチ入力の取得
-    for (i=0; i<touch_len; i++) {
-        // タッチ機能がないESPでは常に0
-        input_key[n] = false;
-        n++;
+    if (touch_len) {
+        noInterrupts(); // 割り込み禁止 開始
+        for (i=0; i<touch_len; i++) {
+            // タッチ機能がないESPでは常に0
+            p = touch_list[i];
+            pinMode(p, OUTPUT);
+            digitalWrite(p, 1);
+            for (t=0; t<80; t++) __NOP();
+            // delayMicroseconds(10);
+            pinMode(p, INPUT);
+            for (t=0; t<80; t++) __NOP();
+            // delayMicroseconds(10);
+            touch_read[i] = analogRead(p);
+            pinMode(p, OUTPUT);
+            digitalWrite(p, 0);
+            input_key[n] = false;
+            n++;
+        }
+        interrupts(); // 割り込み禁止 解除
     }
     // 磁気スイッチの取得
     for (i=0; i<hall_len; i++) {

@@ -113,6 +113,7 @@ void BleKeyboardJIS::begin(char *deviceName)
      * min = 9*1.25=11.25 ms, max = 12*1.25= 15 ms 
      */
     /* Bluefruit.Periph.setConnInterval(9, 12); */
+    // Bluefruit.Periph.setConnInterval(9, 64);
   
     // Set up and start advertising
     startAdv();
@@ -182,6 +183,41 @@ bool BleKeyboardJIS::isConnected(void)
   }
 };
 
+
+  // ファイルのfast送信処理
+void BleKeyboardJIS::fast_save_file(void)
+{
+  short i, m;
+  memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
+  // 送信はじめはちょっと待つ
+  if (fast_save_file_index == 0) {
+    delay(300); // この待ちが無いと indicate を受け取ってくれない 100 では短かった
+  } else {
+    delay(10);
+  }
+  // 送信が終わってれば何もしない
+  if (fast_save_file_index >= save_file_length) return;
+  // 送信データ作成
+  send_buf[0] = if_fast_get_file_data;
+  send_buf[1] = ((fast_save_file_index >> 16) & 0xff);
+  send_buf[2] = ((fast_save_file_index >> 8) & 0xff);
+  send_buf[3] = (fast_save_file_index & 0xff);
+  m = OUTPUT_REPORT_RAW_MAX_LEN - 4;
+  for (i=0; i<m; i++) {
+    send_buf[i + 4] = save_file_data[fast_save_file_index];
+    fast_save_file_index++;
+    if (fast_save_file_index >= save_file_length) break;
+  }
+  // ファイルデータを送信
+  if (ble_type == 2) { // 分割：小
+    bleuart.write(send_buf, OUTPUT_REPORT_RAW_MAX_LEN); // BLE Uart で送信
+  } else if (ble_type == 0 || ble_type == 1) { // シングル || 分割：親
+		// _characteristic_input->notify(fast_send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
+		_characteristic_input->indicate(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
+  }
+  // bleuart.write(fast_send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
+  // bleuart.flush(); // 中身が送信バッファをクリアするだけだった
+};
 
 unsigned short BleKeyboardJIS::modifiers_press(unsigned short k) {
   this->setConnInterval(0); // 消費電力モード解除

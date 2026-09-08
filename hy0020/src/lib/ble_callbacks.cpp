@@ -83,14 +83,18 @@ void HidrawCallbackExec(int data_length) {
 
 
 		case id_get_file_start: { // 0x30 ファイル取得開始
-			// ファイル名を取得
-			i = 1;
-			while (remap_buf[i]) {
-				target_file_path[i - 1] = remap_buf[i];
-				i++;
-				if (i >= OUTPUT_REPORT_RAW_MAX_LEN) break;
+			// ファイル名の最初の文字が 0x00 だった場合通常送信
+			if (remap_buf[1] == 0x00) {
+				// 通常送信
+				p = 0; // 送信モード 通常
+				i = 2; // ファイル名読み込み開始位置
+			} else {
+				// 高速送信
+				p = 1; // 送信モード 高速
+				i = 1; // ファイル名読み込み開始位置
 			}
-			target_file_path[i - 1] = 0x00;
+			// ファイル名を取得
+			strcpy(target_file_path, (char *)&remap_buf[i]);
 
 		    // ファイルが無ければ0を返す
 			if (!InternalFS.exists(target_file_path)) {
@@ -104,13 +108,17 @@ void HidrawCallbackExec(int data_length) {
 			save_file_data = (uint8_t *)malloc(save_file_length);
 			fp.read(save_file_data, save_file_length);
 			fp.close();
-			send_buf[0] = id_get_file_start;
+			send_buf[0] = (p)? id_fast_get_file_start: id_get_file_start;
 			send_buf[1] = 0x01; // ファイルは存在する
 			send_buf[2] = ((save_file_length >> 24) & 0xff);
 			send_buf[3] = ((save_file_length >> 16) & 0xff);
 			send_buf[4] = ((save_file_length >> 8) & 0xff);
 			send_buf[5] = (save_file_length & 0xff);
 			for (i=6; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+			if (p) {
+				fast_save_file_index = 0;
+				aztool_mode_flag = 4; // fast送信モード
+			}
 			return;
 		    
 		}
@@ -145,6 +153,33 @@ void HidrawCallbackExec(int data_length) {
 			if (p >= save_file_length) {
 				free(save_file_data);
 			}
+			return;
+
+		}
+		case if_fast_get_file_data_one: { // 0x52 ピンポイントで指定したバイト部分のデータ要求
+			// 読み込み開始位置取得
+			p = (remap_buf[1] << 16) + (remap_buf[2] << 8) + remap_buf[3]; // 読み込み開始位置
+			m = OUTPUT_REPORT_RAW_MAX_LEN - 4;
+			// 返すデータ作成
+			memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
+			send_buf[0] = if_fast_get_file_data_one;
+			send_buf[1] = ((p >> 16) & 0xff);
+			send_buf[2] = ((p >> 8) & 0xff);
+			send_buf[3] = (p & 0xff);
+			if ((p + m) >= save_file_length) m = save_file_length - p;
+			for (i=0; i<m; i++) {
+				send_buf[i + 4] = save_file_data[p + i];
+			}
+			return;
+
+		}
+		case if_fast_get_file_end: { // 0x53 高速取得終了
+			aztool_mode_flag = 2;
+			save_file_length = 0;
+			fast_save_file_index = 0;
+			free(save_file_data);
+			memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
+			send_buf[0] = if_fast_get_file_end;
 			return;
 
 		}
@@ -783,8 +818,9 @@ void HidrawCallbackExec(int data_length) {
 			}
 			// 子端末にファイル取得要求
 			send_buf[0] = id_get_file_start;
-			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) {
-				send_buf[i] = remap_buf[i];
+			send_buf[1] = 0x00; // 通常送信モードで送ってもらう
+			for (i=1; i<(OUTPUT_REPORT_RAW_MAX_LEN - 1); i++) {
+				send_buf[i+1] = remap_buf[i];
 			}
 			// sprintf("%c/kle.json", id_get_file_start);
 			clientUart.write(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
@@ -806,8 +842,7 @@ void HidrawCallbackExec(int data_length) {
 
 		}
 		default: {
-			send_buf[0] = 0xFF;
-			for (i=1; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
+			for (i=0; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
             return;
 
         }
@@ -912,7 +947,9 @@ void client_connect_callback(uint16_t conn_handle)
 	memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
 	send_buf[0] = id_get_scan_addr; // 子アドレスを返す
 	send_buf[1] = save_file_length & 0xFF; // 送るデータのサイズ
-	_characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN); // コマンド送信
+	// _characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN); // コマンド送信
+	_characteristic_input->indicate(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
+
 
   } else if (child_addr_flag) {
 	// 子端末のアドレスから接続した
@@ -1040,7 +1077,8 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 				send_data[0] = id_get_child_file; // ファイルデータ取得
 				send_data[1] = 0x00; // ファイルは存在しない
 				for (i=2; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_data[i] = 0x00;
-				_characteristic_input->notify(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
+				// _characteristic_input->notify(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
+				_characteristic_input->indicate(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
 				return;
 			}
 			// ファイルを受け取る準備をしてデータ取得開始する
@@ -1082,7 +1120,8 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 				send_data[5] = (save_file_length & 0xff);         // ファイルサイズ 4
 				for (i=6; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_data[i] = 0x00;
 				// ブラウザに送信
-				_characteristic_input->notify(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
+				// _characteristic_input->notify(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
+				_characteristic_input->indicate(send_data, OUTPUT_REPORT_RAW_MAX_LEN);
 
 
 			} else {
