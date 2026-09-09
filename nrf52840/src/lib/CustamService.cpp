@@ -41,7 +41,8 @@ void BLECustam::onCommandWritten(uint16_t conn_hdl, BLECharacteristic* character
 	HidrawCallbackExec(data_length);
 	// 返信データ送信
 	if (send_buf[0]) {
-		_characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
+		// _characteristic_input->notify(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
+		_characteristic_input->indicate(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
 	}
 }
 
@@ -65,6 +66,8 @@ err_t BLECustam::begin(void)
   VERIFY_STATUS( _characteristic_output->begin() );
 
   // XIAOからブラウザにデータを送る用のcharacteristic
+  _characteristic_input->setProperties(CHR_PROPS_INDICATE);
+  // _characteristic_input->setPermission(SECMODE_OPEN, SECMODE_NO_ACCESS);
   VERIFY_STATUS( _characteristic_input->begin() );
 
   return ERROR_NONE;

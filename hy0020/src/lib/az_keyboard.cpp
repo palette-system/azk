@@ -663,6 +663,9 @@ void AzKeyboard::loop_exec(void) {
     // ステータスLED更新ループ
     status_led_loop();
 
+    // 電源スイッチ用ループ処理
+    power_sleep_loop();
+
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
         delay(50);
@@ -723,9 +726,6 @@ void AzKeyboard::loop_exec(void) {
     // 省電力モード用ループ処理
     // power_saving_loop();
 
-    // 電源スイッチ用ループ処理
-    power_sleep_loop();
-
     delay(loop_delay);
     status_index += loop_delay;
 
@@ -735,6 +735,9 @@ void AzKeyboard::loop_exec(void) {
 void AzKeyboard::loop_exec_child(void) {
     // ステータスLED更新ループ
     status_led_loop();
+
+    // 電源スイッチ用ループ処理
+    power_sleep_loop();
 
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
@@ -786,9 +789,6 @@ void AzKeyboard::loop_exec_child(void) {
 
     // マウス移動処理
     move_mouse_loop();
-
-    // 電源スイッチ用ループ処理
-    power_sleep_loop();
 
     delay(loop_delay);
     status_index += loop_delay;

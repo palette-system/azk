@@ -662,10 +662,42 @@ void AzKeyboard::loop_exec(void) {
     // ステータスLED更新ループ
     status_led_loop();
 
+    // 電源スイッチ用ループ処理
+    power_sleep_loop();
+
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
-        delay(1000);
-        status_index += 1000;
+        delay(50);
+        status_index += 50;
+        return;
+    }
+
+    // fast送信モード
+    if (aztool_mode_flag == 4) {
+        bleKeyboard.fast_save_file();
+        return;
+    }
+
+    // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
+    if (aztool_mode_flag == 1) {
+        delay(100);
+        return;
+    }
+
+    // aztool入力テスト中はキー入力の読み込みだけループ
+    if (aztool_mode_flag == 2) {
+        // 現在のキーの状態を取得
+        common_cls.key_read();
+        // 現在のキーの状態を前回部分にコピー
+        common_cls.key_old_copy();
+        delay(5);
+        return;
+    }
+
+    // キーボードリスタート要求を受け取った
+    if (aztool_mode_flag == 3) {
+        delay(300);
+        common_cls.restart(); // 再起動
         return;
     }
 
@@ -693,29 +725,6 @@ void AzKeyboard::loop_exec(void) {
     // 省電力モード用ループ処理
     // power_saving_loop();
 
-    // 電源スイッチ用ループ処理
-    power_sleep_loop();
-
-    // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
-    while (aztool_mode_flag == 1) {
-        delay(100);
-    }
-
-    // aztool入力テスト中はキー入力の読み込みだけループ
-    while (aztool_mode_flag == 2) {
-        // 現在のキーの状態を取得
-        common_cls.key_read();
-        // 現在のキーの状態を前回部分にコピー
-        common_cls.key_old_copy();
-        delay(5);
-    }
-
-    // キーボードリスタート要求を受け取った
-    if (aztool_mode_flag == 3) {
-        delay(300);
-        common_cls.restart(); // 再起動
-    }
-
     delay(loop_delay);
     status_index += loop_delay;
 
@@ -726,12 +735,45 @@ void AzKeyboard::loop_exec_child(void) {
     // ステータスLED更新ループ
     status_led_loop();
 
+    // 電源スイッチ用ループ処理
+    power_sleep_loop();
+
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
-        delay(1000);
-        status_index += 1000;
+        delay(50);
+        status_index += 50;
         return;
     }
+
+    // fast送信モード
+    if (aztool_mode_flag == 4) {
+        bleKeyboard.fast_save_file();
+        return;
+    }
+
+    // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
+    if (aztool_mode_flag == 1) {
+        delay(100);
+        return;
+    }
+
+    // aztool入力テスト中はキー入力の読み込みだけループ
+    if (aztool_mode_flag == 2) {
+        // 現在のキーの状態を取得
+        common_cls.key_read();
+        // 現在のキーの状態を前回部分にコピー
+        common_cls.key_old_copy();
+        delay(5);
+        return;
+    }
+
+    // キーボードリスタート要求を受け取った
+    if (aztool_mode_flag == 3) {
+        delay(300);
+        common_cls.restart(); // 再起動
+        return;
+    }
+
 
     // 現在のキーの状態を前回部分にコピー
     common_cls.key_old_copy();
@@ -746,20 +788,6 @@ void AzKeyboard::loop_exec_child(void) {
 
     // マウス移動処理
     move_mouse_loop();
-
-    // 電源スイッチ用ループ処理
-    power_sleep_loop();
-
-    // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
-    while (aztool_mode_flag == 1) {
-        delay(100);
-    }
-
-    // キーボードリスタート要求を受け取った
-    if (aztool_mode_flag == 3) {
-        delay(300);
-        common_cls.restart(); // 再起動
-    }
 
     delay(loop_delay);
     status_index += loop_delay;

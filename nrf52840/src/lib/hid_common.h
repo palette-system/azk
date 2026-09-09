@@ -59,6 +59,11 @@ enum via_command_id {
     id_get_scan_data_end                    = 0x4C,
     id_get_child_file                       = 0x4D,
 
+    id_fast_get_file_start                  = 0x50, // ファイルを高速送信します宣言
+    if_fast_get_file_data                   = 0x51, // 1回ずつチェックしないで一気にファイルデータを送信する
+    if_fast_get_file_data_one               = 0x52, // 特定のデータをピンポイントで要求する
+    if_fast_get_file_end                    = 0x53, // ファイル高速送信終了
+
     // ステータス取得
     id_get_firmware_status                  = 0x60,
     id_get_ble_info                         = 0x61,
@@ -79,10 +84,10 @@ enum via_keyboard_value_id {
 };
 
 // remapへ返事を返す用のバッファ
-extern uint8_t remap_buf[36];
+extern uint8_t remap_buf[20];
 
 // ファイル送受信用バッファ
-extern uint8_t send_buf[36];
+extern uint8_t send_buf[20];
 extern char target_file_path[36];
 extern char second_file_path[36];
 

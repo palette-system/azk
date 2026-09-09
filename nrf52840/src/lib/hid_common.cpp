@@ -2,10 +2,10 @@
 #include "hid_common.h"
 
 // remapへ返事を返す用のバッファ
-uint8_t remap_buf[36];
+uint8_t remap_buf[20];
 
 // ファイル送受信用バッファ
-uint8_t send_buf[36];
+uint8_t send_buf[20];
 char target_file_path[36];
 char second_file_path[36];
 

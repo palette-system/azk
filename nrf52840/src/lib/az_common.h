@@ -52,6 +52,12 @@ using namespace Adafruit_LittleFS_Namespace;
 // JSON のファイルパス
 #define SETTING_JSON_PATH "/setting.json"
 
+// 設定JSON の バックアップ ファイルパス
+#define SETTING_JSON_BACKUP_PATH "/sb"
+
+// kle のファイルパス
+#define KLE_JSON_PATH "/kle.json"
+
 // アクチュエーションタイプデフォルト
 #define  ACTUATION_TYPE_DEFAULT  0
 
@@ -210,6 +216,7 @@ class AzCommon
         void restart(); // ESP32再起動
         int split(String data, char delimiter, String *dst); // 区切り文字で分割する
         bool create_setting_json(); // デフォルトの設定json作成
+        void recovery_setting_json(); // 設定JSON復元
         void load_setting_json(); // jsonデータロード
         void clear_keymap(); // キーマップ用に確保しているメモリを解放
         void get_keymap(JsonObject setting_obj); // JSONデータからキーマップの情報を読み込む
@@ -260,6 +267,7 @@ extern uint32_t hid_state_change_time; // 最後にステータスを変更し�
 extern uint16_t hid_interval_normal; // 通常時のBLEインターバル
 extern uint16_t hid_interval_saving; // 省電力モード時のBLEインターバル
 extern int hid_saving_time; // 省電力モードに入るまでの時間(ミリ秒)
+extern int fast_save_file_index;
 
 // 電源ピン番号
 extern int power_pin;
@@ -301,6 +309,8 @@ extern short *touch_list;
 extern short *hall_list;
 extern short *hall_offset;
 extern short read_type;
+extern short touch_read[16];
+
 
 // 入力ピン情報 I2C
 extern short ioxp_sda;

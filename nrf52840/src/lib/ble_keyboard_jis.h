@@ -42,6 +42,7 @@ class BleKeyboardJIS
     bool onShift(); // Shiftが押されている状態かどうか(物理的に)
     void setConnInterval(int interval_type);
     void split_send_key(); // 分割：小 の入力キーを親に送る
+    void fast_save_file(); // ファイルの高速送信処理
 };
 
 
