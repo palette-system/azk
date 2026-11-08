@@ -219,8 +219,8 @@ class AzCommon
         void recovery_setting_json(); // 設定JSON復元
         void load_setting_json(); // jsonデータロード
         void clear_keymap(); // キーマップ用に確保しているメモリを解放
-        void get_keymap(JsonObject setting_obj); // JSONデータからキーマップの情報を読み込む
-        void get_keymap_one(JsonObject json_obj, setting_key_press *press_obj, uint16_t lnum, uint16_t knum); // JSONデータからキーマップの情報を読み込む(1キー分)
+        void get_keymap(JsonVariantConst setting_obj); // JSONデータからキーマップの情報を読み込む
+        void get_keymap_one(JsonVariantConst json_obj, setting_key_press *press_obj, uint16_t lnum, uint16_t knum); // JSONデータからキーマップの情報を読み込む(1キー分)
         int read_file(char *file_path, uint8_t *read_data); // ファイルからデータを読み出す
         int write_file(char *file_path, uint8_t *write_data, int data_len); // ファイルにデータを保存する
         int remove_file(char *file_path); // ファイルを削除する
@@ -416,9 +416,6 @@ extern uint8_t key_count_auto_save;
 
 // 共通クラスリンク
 extern AzCommon common_cls;
-
-// 設定JSONオブジェクト
-extern JsonObject setting_obj;
 
 
 // キーが押された時の設定

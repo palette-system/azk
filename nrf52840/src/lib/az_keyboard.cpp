@@ -22,7 +22,7 @@ AzKeyboard::AzKeyboard() {
 // キーボード初期化処理
 void AzKeyboard::begin_keyboard() {
     // bluetoothキーボード開始
-    bleKeyboard.begin(keyboard_name_str);
+    bleKeyboard.begin();
 }
 
 // キーボードとして処理開始
@@ -615,19 +615,17 @@ void AzKeyboard::power_sleep_loop() {
     if (power_pin < 0) return;
 
     if (digitalRead(power_pin)) {
+        // common_cls.restart(); // 再起動
         // 参考 
-        // https://qiita.com/nanbuwks/items/c2f098793899001b5087
-        // https://qiita.com/nanbuwks/items/36c32989543399f3aa62
-        // プルアップ
-        nrf_gpio_cfg_input(g_ADigitalPinMap[power_pin], NRF_GPIO_PIN_PULLUP);
-        // LOWでスリープ解除
-        nrf_gpio_cfg_sense_set(g_ADigitalPinMap[power_pin], NRF_GPIO_PIN_SENSE_LOW);
-        // ステータスLED消す
-        // digitalWrite(LED_RED, 1); // XIAO LED RED
-        // digitalWrite(LED_BLUE, 1); // XIAO LED BLUE
-        // digitalWrite(LED_GREEN, 1); // XIAO LED GREEN
+        // https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Bluefruit52Lib/examples/Hardware/blink_sleep/blink_sleep.ino
         if (status_pin >= 0) digitalWrite(status_pin, 1);
-        
+        bsp_indication_set(BSP_INDICATE_IDLE); // BLE LED OFF
+        // digitalWrite(LED_BLUE, 1); // BLE LED OFF
+
+        // pinMode(power_pin,  INPUT_PULLUP_SENSE);    // this pin (WAKE_LOW_PIN) is pulled up and wakes up the feather when externally connected to ground.
+
+        // bleKeyboard.disConnect();
+        // delay(1000);
         // オンボードQSPI Flash MemoryをDeep Power-downモードにして省電力化する
         // flashTransport.begin();
         // flashTransport.runCommand(0xB9);
@@ -635,10 +633,11 @@ void AzKeyboard::power_sleep_loop() {
         // flashTransport.end();
 
         // スリープ開始
-        sd_power_system_off();
-        while (true) {
-            delay(1000);
-        }
+        // NRF_POWER->SYSTEMOFF=1;
+        // sd_power_system_off();
+        waitForEvent(); // 割り込み処理が終わるまでまつ
+        systemOff(power_pin, 0); // スリープ開始
+        delay(1000);
     }
 }
 
@@ -665,6 +664,12 @@ void AzKeyboard::loop_exec(void) {
     // 電源スイッチ用ループ処理
     power_sleep_loop();
 
+    // キーボードリスタート要求を受け取った
+    if (aztool_mode_flag == 3) {
+        common_cls.restart(); // 再起動
+        return;
+    }
+
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
         delay(50);
@@ -681,6 +686,7 @@ void AzKeyboard::loop_exec(void) {
     // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
     if (aztool_mode_flag == 1) {
         delay(100);
+        status_index += 100;
         return;
     }
 
@@ -691,13 +697,7 @@ void AzKeyboard::loop_exec(void) {
         // 現在のキーの状態を前回部分にコピー
         common_cls.key_old_copy();
         delay(5);
-        return;
-    }
-
-    // キーボードリスタート要求を受け取った
-    if (aztool_mode_flag == 3) {
-        delay(300);
-        common_cls.restart(); // 再起動
+        status_index += 5;
         return;
     }
 
@@ -738,6 +738,12 @@ void AzKeyboard::loop_exec_child(void) {
     // 電源スイッチ用ループ処理
     power_sleep_loop();
 
+    // キーボードリスタート要求を受け取った
+    if (aztool_mode_flag == 3) {
+        common_cls.restart(); // 再起動
+        return;
+    }
+
     // キーボードに接続していなければ何もしない
     if (!bleKeyboard.isConnected()) {
         delay(50);
@@ -754,6 +760,7 @@ void AzKeyboard::loop_exec_child(void) {
     // eztoolツールI2Cオプション設定中はループ処理をしない(I2Cの読み込みが走っちゃうと落ちるから)
     if (aztool_mode_flag == 1) {
         delay(100);
+        status_index += 100;
         return;
     }
 
@@ -764,13 +771,7 @@ void AzKeyboard::loop_exec_child(void) {
         // 現在のキーの状態を前回部分にコピー
         common_cls.key_old_copy();
         delay(5);
-        return;
-    }
-
-    // キーボードリスタート要求を受け取った
-    if (aztool_mode_flag == 3) {
-        delay(300);
-        common_cls.restart(); // 再起動
+        status_index += 5;
         return;
     }
 

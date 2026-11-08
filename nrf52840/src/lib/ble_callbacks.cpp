@@ -174,7 +174,7 @@ void HidrawCallbackExec(int data_length) {
 
 		}
 		case if_fast_get_file_end: { // 0x53 高速取得終了
-			aztool_mode_flag = 2;
+			aztool_mode_flag = 1;
 			save_file_length = 0;
 			fast_save_file_index = 0;
 			free(save_file_data);
@@ -295,7 +295,7 @@ void HidrawCallbackExec(int data_length) {
 			send_buf[0] = id_remove_file;
 		    // ファイルがあればファイルを消す
 			if (InternalFS.exists(target_file_path)) {
-				if (!InternalFS.remove(target_file_path)) {
+				if (!common_cls.remove_file(target_file_path)) {
 					// 削除失敗したら2にする
 					send_buf[1] = 0x02;
 				} else {
@@ -391,23 +391,15 @@ void HidrawCallbackExec(int data_length) {
 			// ここのコードをマネした： https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Adafruit_LittleFS/src/Adafruit_LittleFS.cpp#L258-L268
 			send_buf[0] = id_get_disk_info; // 結果の返すコマンド
 			// spiffs の容量
-			lfs_t *f;
-			f = InternalFS._getFS();
-			m = f->cfg->block_count * f->cfg->block_size;
-			send_buf[1] = ((m >> 24) & 0xff);
-			send_buf[2] = ((m >> 16) & 0xff);
-			send_buf[3] = ((m >> 8) & 0xff);
-			send_buf[4] = (m & 0xff);
+			send_buf[1] = 0;
+			send_buf[2] = 0;
+			send_buf[3] = 0;
+			send_buf[4] = 0;
 			// spiffs の使用容量
-			InternalFS._lockFS();
-			size_t block_used = 0;
-			lfs_traverse(f, _lfs_count, &block_used);
-			InternalFS._unlockFS();
-			m = block_used * f->cfg->block_size;
-			send_buf[5] = ((m >> 24) & 0xff);
-			send_buf[6] = ((m >> 16) & 0xff);
-			send_buf[7] = ((m >> 8) & 0xff);
-			send_buf[8] = (m & 0xff);
+			send_buf[5] = 0;
+			send_buf[6] = 0;
+			send_buf[7] = 0;
+			send_buf[8] = 0;
 			// 結果を返すコマンドを送信
 			for (i=9; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 			return;
@@ -849,7 +841,28 @@ void HidrawCallbackExec(int data_length) {
 	}
 }
 
-// BLE クライアント アドバタイズ端末を発見した時の スキャン コールバック
+// BLE HID Custam コネクションが確立した時のコールバック(BLE HID)
+void hid_connect_callback(uint16_t conn_handle)
+{
+  BLEConnection* hid_conn = Bluefruit.Connection(conn_handle); // 接続情報取得
+  // hid_conn->requestPHY();
+  // hid_conn->requestDataLengthUpdate(); // データサイズを可変にする
+  // hid_conn->requestMtuExchange(OUTPUT_REPORT_RAW_MAX_LEN + 3); // 送信MTUサイズ指定
+  hid_conn->requestConnectionParameter(12); // コネクションインターバル設定
+  delay(100);
+}
+
+// BLE HID コネクションが終了した時のコールバック(BLE HID)
+void hid_disconnect_callback(uint16_t conn_handle, uint8_t reason)
+{
+  (void) conn_handle;
+  (void) reason;
+  // コネクション切れるたびに再起動する
+  // aztool_mode_flag = 3;
+  if (aztool_mode_flag != 3) aztool_mode_flag = 0;
+}
+
+// BLE クライアント アドバタイズ端末を発見した時の スキャン コールバック（BLE親が子端末を探している時）
 void scan_callback(ble_gap_evt_adv_report_t* report)
 {
   short i;
@@ -897,7 +910,7 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
 }
 
 
-// BLE Client コネクションが確立した時のコールバック
+// BLE Client コネクションが確立した時のコールバック(BLE親→BLE子)
 void client_connect_callback(uint16_t conn_handle)
 {
   // 相手の端末名、アドレスを取得
@@ -1037,6 +1050,7 @@ void client_connect_callback(uint16_t conn_handle)
 
 
 /**
+ * 接続解除(BLE親→BLE子)
  * BLE Client Callback invoked when a connection is dropped
  * @param conn_handle
  * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
@@ -1045,6 +1059,8 @@ void client_disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
 	(void) conn_handle;
 	(void) reason;
+	// キーボード入力モードに戻す
+	aztool_mode_flag = 0;
 	// 接続したよフラグを下げる
 	child_conn_flag = false;
 }
