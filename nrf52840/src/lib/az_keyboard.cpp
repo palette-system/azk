@@ -619,12 +619,11 @@ void AzKeyboard::power_sleep_loop() {
         // 参考 
         // https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Bluefruit52Lib/examples/Hardware/blink_sleep/blink_sleep.ino
         if (status_pin >= 0) digitalWrite(status_pin, 1);
-        bsp_indication_set(BSP_INDICATE_IDLE); // BLE LED OFF
-        // digitalWrite(LED_BLUE, 1); // BLE LED OFF
+        // bsp_indication_set(BSP_INDICATE_IDLE); // BLE LED OFF
+        digitalWrite(LED_BLUE, 1); // BLE LED OFF
 
         // pinMode(power_pin,  INPUT_PULLUP_SENSE);    // this pin (WAKE_LOW_PIN) is pulled up and wakes up the feather when externally connected to ground.
 
-        // bleKeyboard.disConnect();
         // delay(1000);
         // オンボードQSPI Flash MemoryをDeep Power-downモードにして省電力化する
         // flashTransport.begin();
