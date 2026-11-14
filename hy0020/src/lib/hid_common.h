@@ -84,10 +84,10 @@ enum via_keyboard_value_id {
 };
 
 // remapへ返事を返す用のバッファ
-extern uint8_t remap_buf[20];
+extern uint8_t remap_buf[32];
 
 // ファイル送受信用バッファ
-extern uint8_t send_buf[20];
+extern uint8_t send_buf[32];
 extern char target_file_path[36];
 extern char second_file_path[36];
 

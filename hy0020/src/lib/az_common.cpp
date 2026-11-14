@@ -194,6 +194,17 @@ int8_t power_read_pin; // 電圧を読み込むピン
 unsigned long aztouch_read_time;
 short aztouch_read_status;
 
+i2c_map i2cmap_obj;
+i2c_ioxp i2cioxp_obj;
+i2c_rotary i2crotary_obj;
+i2c_pim447 i2cpim447_obj;
+i2c_azxp i2cazxp_obj;
+
+tracktall_pim447_data pim447_data_obj;
+tracktall_pim447_data pim447_data_old;
+azxp_key_data azxp_key_data_obj;
+trackpad_cst816_data trackpad_cst816_obj;
+
 // ランダムな文字生成(1文字)
 char getRandomCharLower(void) {
     const char CHARS[] = "abcdefghijklmnopqrstuvwxyz";
@@ -304,7 +315,24 @@ void AzCommon::common_start() {
 
 // ESP32 再起動
 void AzCommon::restart() {
+    delay(500);
+    NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Wen << NVMC_CONFIG_WEN_Pos;
+    while (NRF_NVMC->READY == NVMC_READY_READY_Busy);
+    NRF_UICR->NFCPINS &= ~UICR_NFCPINS_PROTECT_Msk;
+    while (NRF_NVMC->READY == NVMC_READY_READY_Busy);
+    NRF_NVMC->CONFIG = NVMC_CONFIG_WEN_Ren << NVMC_CONFIG_WEN_Pos;
+    while (NRF_NVMC->READY == NVMC_READY_READY_Busy);
+    delay(500);
     NVIC_SystemReset();
+    // delay(1000);
+    // WDT を設定して待つことでWDTのチェックで再起動させる
+    /*
+    NRF_WDT->CONFIG = 0x01;     // CPUがスリープ（Sleep）モード時もWDTを稼働させる
+    NRF_WDT->CRV = 32768;   // タイムアウト時間を1秒に設定 (秒数 * 32768)
+    NRF_WDT->RREN = 0x01;       // リロードレジスタ RR[0] を有効化
+    NRF_WDT->TASKS_START = 1;   // WDTを開始
+    */
+    while (true) { delay(1000); }
 }
 
 
@@ -340,58 +368,43 @@ int split_num(const char *c) {
 // 設定JSON復元
 void AzCommon::recovery_setting_json() {
     // バックアップファイルがあればこれを復元
-    if(InternalFS.exists(SETTING_JSON_BACKUP_PATH)){
-        // バックアップ ファイル読み込み
-        File fp = InternalFS.open(SETTING_JSON_BACKUP_PATH, FILE_O_READ);
-        uint32_t json_len = fp.size();
-        uint8_t json_data[json_len];
-        fp.read(json_data, json_len);
-        fp.close();
-        // 設定JSON に書き込み
-        write_file(SETTING_JSON_PATH, json_data, json_len);
-        delay(1000);
-        restart(); // 再起動
-        return;
-    }
+  InternalFS.format();
+  delay(1000);
     // デフォルトJSON 作成
     create_setting_json();
     delay(100);
-    remove_file(KLE_JSON_PATH); // kle.json 削除
+    char kle_json_path[] = KLE_JSON_PATH;
+    remove_file(kle_json_path); // kle.json 削除
     delay(1000);
     restart(); // 再起動
     return;
 }
 
-// JSONデータを読み込む
+
+    // JSONデータを読み込む
 void AzCommon::load_setting_json() {
     int i, j, k, m, n, o, p, r;
+    DynamicJsonDocument setting_obj(JSON_DOC_SIZE);
 
     // セッティングJSONを保持する領域
-    JsonDocument setting_doc;
-    JsonObject setting_obj;
-
+    char setting_json_path[] = "/setting.json";
+    // sprintf(setting_json_path, "/setting.json");
     // ファイル存在確認
-    if(!InternalFS.exists(SETTING_JSON_PATH)){
+    if(!InternalFS.exists(setting_json_path)){
         // ファイルが無い場合は設定JSON作り直して再起動
         recovery_setting_json();
         return;
     }
-    // ファイル読み込み
-    File fp = InternalFS.open(SETTING_JSON_PATH, FILE_O_READ);
-    uint32_t json_len = fp.size();
-    uint8_t json_data[json_len];
-    fp.read(json_data, json_len);
-    fp.close();
 
     // 読み込み＆パース
-    DeserializationError err = deserializeJson(setting_doc, json_data);
+    File fp = InternalFS.open(setting_json_path, FILE_O_READ);
+    DeserializationError err = deserializeJson(setting_obj, fp);
     if (err) {
         // パース出来なかった場合は設定JSON作り直して再起動
         recovery_setting_json();
         return;
     }
-    // オブジェクトを保持
-    setting_obj = setting_doc.as<JsonObject>();
+
 
     // キーボードタイプは必須なので項目が無ければ設定ファイル作り直し(設定ファイル壊れた時用)
     if (!setting_obj["keyboard_type"].is<String>()) {
@@ -492,7 +505,7 @@ void AzCommon::load_setting_json() {
 
     // 入力ピン情報取得
     if (setting_obj["keyboard_pin"].is<JsonObject>()) {
-        if (setting_obj["keyboard_pin"]["col"].is<JsonArray>() && setting_obj["keyboard_pin"]["col"].size()) {
+        if (setting_obj["keyboard_pin"]["col"].is<JsonArrayConst>() && setting_obj["keyboard_pin"]["col"].size()) {
             col_len = setting_obj["keyboard_pin"]["col"].size();
             col_list = new short[col_len];
             for (i=0; i<col_len; i++) {
@@ -501,7 +514,7 @@ void AzCommon::load_setting_json() {
         } else {
             col_len = 0;
         }
-        if (setting_obj["keyboard_pin"]["row"].is<JsonArray>() && setting_obj["keyboard_pin"]["row"].size()) {
+        if (setting_obj["keyboard_pin"]["row"].is<JsonArrayConst>() && setting_obj["keyboard_pin"]["row"].size()) {
             row_len = setting_obj["keyboard_pin"]["row"].size();
             row_list = new short[row_len];
             for (i=0; i<row_len; i++) {
@@ -510,16 +523,16 @@ void AzCommon::load_setting_json() {
         } else {
             row_len = 0;
         }
-        if (setting_obj["keyboard_pin"]["direct"].is<JsonArray>() && setting_obj["keyboard_pin"]["direct"].size()) {
+        if (setting_obj["keyboard_pin"]["direct"].is<JsonArrayConst>() && setting_obj["keyboard_pin"]["direct"].size()) {
             direct_len = setting_obj["keyboard_pin"]["direct"].size();
             direct_list = new short[direct_len];
             for (i=0; i<direct_len; i++) {
-                direct_list[i] = setting_obj["keyboard_pin"]["direct"][i].as<signed int>();
+                direct_list[i] = setting_obj["keyboard_pin"]["direct"][i].as<signed short>();
             }
         } else {
             direct_len = 0;
         }
-        if (setting_obj["keyboard_pin"]["touch"].is<JsonArray>() && setting_obj["keyboard_pin"]["touch"].size()) {
+        if (setting_obj["keyboard_pin"]["touch"].is<JsonArrayConst>() && setting_obj["keyboard_pin"]["touch"].size()) {
             touch_len = setting_obj["keyboard_pin"]["touch"].size();
             touch_list = new short[touch_len];
             for (i=0; i<touch_len; i++) {
@@ -563,7 +576,7 @@ void AzCommon::load_setting_json() {
     }
 
     // IOエキスパンダピン
-    if (setting_obj["i2c_set"].is<JsonArray>() && setting_obj["i2c_set"].size() == 3) {
+    if (setting_obj["i2c_set"].is<JsonArrayConst>() && setting_obj["i2c_set"].size() == 3) {
         ioxp_sda = setting_obj["i2c_set"][0].as<signed int>();
         ioxp_scl = setting_obj["i2c_set"][1].as<signed int>();
         ioxp_hz = setting_obj["i2c_set"][2].as<signed int>();
@@ -574,7 +587,7 @@ void AzCommon::load_setting_json() {
     }
 
     // シリアル通信(赤外線)ピン
-    if (setting_obj["seri_set"].is<JsonArray>() && setting_obj["seri_set"].size() == 4) {
+    if (setting_obj["seri_set"].is<JsonArrayConst>() && setting_obj["seri_set"].size() == 4) {
         seri_tx = setting_obj["seri_set"][0].as<signed int>();
         seri_rx = setting_obj["seri_set"][1].as<signed int>();
         seri_hz = setting_obj["seri_set"][2].as<signed int>();
@@ -591,26 +604,17 @@ void AzCommon::load_setting_json() {
     }
 
     // I2cオプションの設定
-    i2c_map i2cmap_obj;
-    i2c_ioxp i2cioxp_obj;
-    i2c_rotary i2crotary_obj;
-    i2c_pim447 i2cpim447_obj;
-    i2c_azxp i2cazxp_obj;
     int opt_type;
-    if (setting_obj["i2c_option"].is<JsonArray>() && setting_obj["i2c_option"].size()) {
+    if (setting_obj["i2c_option"].is<JsonArrayConst>() && setting_obj["i2c_option"].size()) {
         // 有効になっているオプションの数を数える
         k = setting_obj["i2c_option"].size();
-        // Serial.printf("i2c_option size: %D\n", k);
         i2copt_len = 0;
         for (i=0; i<k; i++) {
-            // Serial.printf("i2c_option: check %D\n", i);
             if (setting_obj["i2c_option"][i]["enable"].is<int>() &&
                     setting_obj["i2c_option"][i]["enable"].as<signed int>() == 1) {
-                // Serial.printf("i2c_option: enable %D\n", i);
                 i2copt_len++;
             }
         }
-        // Serial.printf("i2c_option: enable total %D\n", i2copt_len);
         i2copt = new i2c_option[i2copt_len];
         // オプションのデータを取得
         j = 0;
@@ -625,11 +629,10 @@ void AzCommon::load_setting_json() {
                 opt_type = 0;
             }
             i2copt[j].opt_type = opt_type & 0xff;
-            // Serial.printf("i2c_option: load %D type %D - %D\n", i, opt_type, i2copt[j].opt_type);
             // マッピング情報の読み込み
             if (opt_type == 1 || opt_type == 2 || opt_type == 3 || opt_type == 4 || opt_type == 5 || opt_type == 7 || opt_type == 8 || opt_type == 9) { // 1 = IOエキスパンダ（MCP23017）/ 2 = Tiny202 ロータリーエンコーダ
                 // キーマッピング設定
-                if (setting_obj["i2c_option"][i]["map"].is<JsonArray>() &&
+                if (setting_obj["i2c_option"][i]["map"].is<JsonArrayConst>() &&
                         setting_obj["i2c_option"][i]["map"].size() ) {
                     i2cmap_obj.map_len = setting_obj["i2c_option"][i]["map"].size();
                     i2cmap_obj.map = new short[i2cmap_obj.map_len];
@@ -651,14 +654,14 @@ void AzCommon::load_setting_json() {
             // オプション別のデータ読み込み
             if (opt_type == 1) { // 1 = IOエキスパンダ（MCP23017）
                 // 使用するIOエキスパンダの情報
-                if (setting_obj["i2c_option"][i]["ioxp"].is<JsonArray>() && setting_obj["i2c_option"][i]["ioxp"].size()) {
+                if (setting_obj["i2c_option"][i]["ioxp"].is<JsonArrayConst>() && setting_obj["i2c_option"][i]["ioxp"].size()) {
                     i2cioxp_obj.ioxp_len = setting_obj["i2c_option"][i]["ioxp"].size();
                     i2cioxp_obj.ioxp = new ioxp_option[i2cioxp_obj.ioxp_len];
                     for (n=0; n<i2cioxp_obj.ioxp_len; n++) {
                         // IOエキスパンダのアドレス
                         i2cioxp_obj.ioxp[n].addr = setting_obj["i2c_option"][i]["ioxp"][n]["addr"];
                         // row に設定しているピン
-                        if (setting_obj["i2c_option"][i]["ioxp"][n]["row"].is<JsonArray>() &&
+                        if (setting_obj["i2c_option"][i]["ioxp"][n]["row"].is<JsonArrayConst>() &&
                                 setting_obj["i2c_option"][i]["ioxp"][n]["row"].size() ) {
                             // row に設定されている配列を取得(0～7 以外を無視する)
                             i2cioxp_obj.ioxp[n].row_len = setting_obj["i2c_option"][i]["ioxp"][n]["row"].size();
@@ -682,7 +685,7 @@ void AzCommon::load_setting_json() {
                             i2cioxp_obj.ioxp[n].row_len = 0;
                         }
                         // col に設定しているピン
-                        if (setting_obj["i2c_option"][i]["ioxp"][n]["col"].is<JsonArray>() &&
+                        if (setting_obj["i2c_option"][i]["ioxp"][n]["col"].is<JsonArrayConst>() &&
                                 setting_obj["i2c_option"][i]["ioxp"][n]["col"].size() ) {
                             i2cioxp_obj.ioxp[n].col_len = setting_obj["i2c_option"][i]["ioxp"][n]["col"].size();
                             i2cioxp_obj.ioxp[n].col = new uint8_t[i2cioxp_obj.ioxp[n].col_len];
@@ -693,7 +696,7 @@ void AzCommon::load_setting_json() {
                             i2cioxp_obj.ioxp[n].col_len = 0;
                         }
                         // direct に設定しているピン
-                        if (setting_obj["i2c_option"][i]["ioxp"][n]["direct"].is<JsonArray>() &&
+                        if (setting_obj["i2c_option"][i]["ioxp"][n]["direct"].is<JsonArrayConst>() &&
                                 setting_obj["i2c_option"][i]["ioxp"][n]["direct"].size() ) {
                             i2cioxp_obj.ioxp[n].direct_len = setting_obj["i2c_option"][i]["ioxp"][n]["direct"].size();
                             i2cioxp_obj.ioxp[n].direct = new uint8_t[i2cioxp_obj.ioxp[n].direct_len];
@@ -714,7 +717,7 @@ void AzCommon::load_setting_json() {
             } else if (opt_type == 2) { // 2 = Tiny202 ロータリーエンコーダ
                 
                 // 使用するIOエキスパンダの情報
-                if (setting_obj["i2c_option"][i]["rotary"].is<JsonArray>() && setting_obj["i2c_option"][i]["rotary"].size()) {
+                if (setting_obj["i2c_option"][i]["rotary"].is<JsonArrayConst>() && setting_obj["i2c_option"][i]["rotary"].size()) {
                     i2crotary_obj.rotary_len = setting_obj["i2c_option"][i]["rotary"].size();
                     i2crotary_obj.rotary = new uint8_t[i2crotary_obj.rotary_len];
                     for (n=0; n<i2crotary_obj.rotary_len; n++) {
@@ -805,7 +808,7 @@ void AzCommon::load_setting_json() {
     } else {
         i2copt_len = 0;
     }
-
+    i2copt_len = 0;
 
 
     // key_input_length = 16 * ioxp_len;
@@ -869,21 +872,31 @@ void AzCommon::load_setting_json() {
     matrix_col = -1;
     if (setting_obj["matrix_col"].is<int>()) matrix_col = setting_obj["matrix_col"].as<signed int>();
 
-    led_num_length = setting_obj["led_num"].size();
-    key_matrix_length = setting_obj["key_matrix"].size();
-    if (led_num_length > 0) {
-        led_num = new int8_t[led_num_length];
-        for (i=0; i<led_num_length; i++) {
-            led_num[i] = setting_obj["led_num"][i].as<signed int>();
+    if (setting_obj["led_num"].is<JsonArrayConst>()) {
+        led_num_length = setting_obj["led_num"].size();
+        if (led_num_length > 0) {
+            led_num = new int8_t[led_num_length];
+            for (i=0; i<led_num_length; i++) {
+                led_num[i] = setting_obj["led_num"][i].as<signed int>();
+            }
         }
-    }
-    if (key_matrix_length > 0) {
-        key_matrix = new int8_t[key_matrix_length];
-        for (i=0; i<key_matrix_length; i++) {
-            key_matrix[i] = setting_obj["key_matrix"][i].as<signed int>();
-        }
+    } else {
+        led_num_length = 0;
     }
 
+    if (setting_obj["key_matrix"].is<JsonArrayConst>()) {
+        key_matrix_length = setting_obj["key_matrix"].size();
+        if (key_matrix_length > 0) {
+            key_matrix = new int8_t[key_matrix_length];
+            for (i=0; i<key_matrix_length; i++) {
+                key_matrix[i] = setting_obj["key_matrix"][i].as<signed int>();
+            }
+        }
+    } else {
+        key_matrix_length = 0;
+    }
+
+    setting_obj.clear();
 }
 
 // キーマップ用に確保しているメモリを解放
@@ -917,56 +930,53 @@ void AzCommon::clear_keymap() {
 }
 
 // JSONデータからキーマップの情報を読み込む
-void AzCommon::get_keymap(JsonObject setting_obj) {
-    int i;
-    const char *lkey;
-    const char *kkey;
-    uint16_t lnum, knum;
-    JsonObject::iterator it_l;
-    JsonObject::iterator it_k;
-    JsonObject layers, keys, press_json;
+void AzCommon::get_keymap(JsonVariantConst setting_obj) {
+    short i, j, k, n;
+    char layer_key[16];
+    char keys_key[16];
+    // JsonVariantConst::iterator it_l;
+    // JsonVariantConst::iterator it_k;
     // まずはキー設定されている数を取得
-    layers = setting_obj["layers"].as<JsonObject>();
-    setting_length = 0;
-    for (it_l=layers.begin(); it_l!=layers.end(); ++it_l) {
-        lkey = it_l->key().c_str();
-        if (!setting_obj["layers"][lkey]["keys"].is<JsonObject>()) continue;
-        setting_length += setting_obj["layers"][lkey]["keys"].size();
+    for (k=0; k<256; k++) {
+        sprintf(layer_key, "layer_%d", k);
+        if (!setting_obj["layers"].containsKey(layer_key)) continue;
+        if (!setting_obj["layers"][layer_key].containsKey("keys")) continue;
+        setting_length += setting_obj["layers"][layer_key]["keys"].size();
+        sprintf(layer_key, "layer_%d", k);
     }
-    // Serial.printf("setting total %D\n", setting_length);
-    // 設定数分メモリ確保
-    // Serial.printf("setting_key_press:start: %D %D\n", heap_caps_get_free_size(MALLOC_CAP_32BIT), heap_caps_get_free_size(MALLOC_CAP_8BIT) );
+    // メモリ確保
     setting_press = new setting_key_press[setting_length];
-    // Serial.printf("setting_key_press:end: %D %D\n", heap_caps_get_free_size(MALLOC_CAP_32BIT), heap_caps_get_free_size(MALLOC_CAP_8BIT) );
     // キー設定読み込み
-    i = 0;
-    for (it_l=layers.begin(); it_l!=layers.end(); ++it_l) {
-        lkey = it_l->key().c_str();
-        lnum = split_num(lkey);
-        keys = setting_obj["layers"][lkey]["keys"].as<JsonObject>();
-        for (it_k=keys.begin(); it_k!=keys.end(); ++it_k) {
-            kkey = it_k->key().c_str();
-            knum = split_num(kkey);
-            // Serial.printf("get_keymap: %S %S [ %D %D ]\n", lkey, kkey, lnum, knum);
-            // Serial.printf("mem: %D %D\n", heap_caps_get_free_size(MALLOC_CAP_32BIT), heap_caps_get_free_size(MALLOC_CAP_8BIT) );
-            press_json = setting_obj["layers"][lkey]["keys"][kkey]["press"].as<JsonObject>();
-            this->get_keymap_one(press_json, &setting_press[i], lnum, knum);
-            setting_press[i].sub_press_flag = false;
-            if (setting_obj["layers"][lkey]["keys"][kkey]["sub"].is<JsonObject>()) {
-                setting_press[i].sub_press_flag = true;
-                setting_press[i].sub_press = new setting_key_press;
-                press_json = setting_obj["layers"][lkey]["keys"][kkey]["sub"].as<JsonObject>();
-                this->get_keymap_one(press_json, (setting_key_press *)setting_press[i].sub_press, lnum, knum);
+    n = 0;
+    for (k=0; k<256; k++) {
+        sprintf(layer_key, "layer_%d", k);
+        if (!setting_obj["layers"].containsKey(layer_key)) continue;
+        for (j=0; j<1024; j++) {
+            sprintf(keys_key, "key_%d", j);
+            if (!setting_obj["layers"][layer_key]["keys"].containsKey(keys_key)) continue;
+            setting_press[n].sub_press_flag = false;
+            if (setting_obj["layers"][layer_key]["keys"][keys_key].containsKey("press")) {
+                this->get_keymap_one(
+                    setting_obj["layers"][layer_key]["keys"][keys_key]["press"],
+                    &setting_press[n], k, j);
             }
-            i++;
+            if (setting_obj["layers"][layer_key]["keys"][keys_key].containsKey("sub")) {
+                setting_press[n].sub_press_flag = true;
+                setting_press[n].sub_press = new setting_key_press;
+                this->get_keymap_one(
+                    setting_obj["layers"][layer_key]["keys"][keys_key]["sub"],
+                    (setting_key_press *)setting_press[n].sub_press, k, j);
+            }
+            n++;
+            if (n >= setting_length) break;
         }
+        if (n >= setting_length) break;
     }
-
 }
 
 // JSONデータからキーマップの情報を読み込む(1キー分)
-void AzCommon::get_keymap_one(JsonObject json_obj, setting_key_press *press_obj, uint16_t lnum, uint16_t knum) {
-    int j, m;
+void AzCommon::get_keymap_one(JsonVariantConst json_obj, setting_key_press *press_obj, uint16_t lnum, uint16_t knum) {
+    short j, m;
     String text_str;
     setting_normal_input normal_input;
     setting_layer_move layer_move_input;
@@ -975,39 +985,39 @@ void AzCommon::get_keymap_one(JsonObject json_obj, setting_key_press *press_obj,
     press_obj->layer = lnum; // 対象レイヤー
     press_obj->key_num = knum; // 対象キーID
     // アクチュエーションポイント
-    if (json_obj["act"].is<int>()) {
-        press_obj->actuation_type = json_obj["act"].as<signed int>();
+    if (json_obj.containsKey("act")) {
+        press_obj->actuation_type = json_obj["act"].as<signed short>();
     } else {
         press_obj->actuation_type = ACTUATION_TYPE_DEFAULT;
     }
     // アクチュエーションポイント
-    if (json_obj["acp"].is<int>()) {
-        press_obj->actuation_point = json_obj["acp"].as<signed int>();
+    if (json_obj.containsKey("acp")) {
+        press_obj->actuation_point = json_obj["acp"].as<signed short>();
     } else {
         press_obj->actuation_point = ACTUATION_POINT_DEFAULT;
     }
     // ラピットトリガー
-    if (json_obj["rap"].is<int>()) {
-        press_obj->rapid_trigger = json_obj["rap"].as<signed int>();
+    if (json_obj.containsKey("rap")) {
+        press_obj->rapid_trigger = json_obj["rap"].as<signed short>();
     } else {
         press_obj->rapid_trigger = RAPID_TRIGGER_DEFAULT;
     }
     // ボタンの動作
-    if (json_obj["action_type"].is<int>()) {
-        press_obj->action_type = json_obj["action_type"].as<signed int>();
-    } else if (json_obj["at"].is<int>()) { // at に略されてる場合もある
-        press_obj->action_type = json_obj["at"].as<signed int>();
+    if (json_obj.containsKey("action_type")) {
+        press_obj->action_type = json_obj["action_type"].as<signed short>();
+    } else if (json_obj.containsKey("at")) { // at に略されてる場合もある
+        press_obj->action_type = json_obj["at"].as<signed short>();
     } else {
         // デフォルトは 1.通常入力
         press_obj->action_type = 1;
     }
     if (press_obj->action_type == 1 || press_obj->action_type == 12) {
         // 1.通常入力 / 12.コマンド入力
-        if (json_obj["key"].is<JsonArray>()) {
+        if (json_obj.containsKey("key")) {
             normal_input.key_length = json_obj["key"].size();
             normal_input.key = new uint16_t[normal_input.key_length];
             for (j=0; j<normal_input.key_length; j++) {
-                    normal_input.key[j] = json_obj["key"][j].as<signed int>();
+                    normal_input.key[j] = json_obj["key"][j].as<signed short>();
             }
         } else {
             normal_input.key_length = 0;
@@ -1098,6 +1108,11 @@ int AzCommon::write_file(char *file_path, uint8_t *write_data, int data_len) {
     // 書込み
     int r = fp.write(write_data, data_len);
     fp.close();
+    delay(100);
+    while (true) {
+        if (InternalFS.exists(file_path)) break;
+        delay(100);
+    }
     return r;
 }
 
@@ -1106,6 +1121,11 @@ int AzCommon::remove_file(char *file_path) {
     if (InternalFS.remove(file_path)) {
         return 1;
     } else {
+        delay(100);
+        while (true) {
+            if (!InternalFS.exists(file_path)) break;
+            delay(100);
+        }
         return 0;
     }
 }
@@ -1113,14 +1133,21 @@ int AzCommon::remove_file(char *file_path) {
 
 // デフォルトのsetting.jsonを生成する
 bool AzCommon::create_setting_json() {
+    char setting_json_path[] = SETTING_JSON_PATH;
+
     // ファイルが存在していれば削除
-    if (InternalFS.exists(SETTING_JSON_PATH)) {
-        InternalFS.remove(SETTING_JSON_PATH);
+    if (InternalFS.exists(setting_json_path)) {
+        remove_file(setting_json_path);
     }
     // 書込みモードでファイルオープン
-    File fp = InternalFS.open(SETTING_JSON_PATH, FILE_O_WRITE);
+    File fp = InternalFS.open(setting_json_path, FILE_O_WRITE);
     if (!fp.write(setting_json_default_bin, sizeof(setting_json_default_bin))) {
         fp.close();
+        delay(100);
+        while (true) {
+            if (InternalFS.exists(setting_json_path)) break;
+            delay(100);
+        }
         return false;
     }
     fp.close();
@@ -1131,26 +1158,23 @@ bool AzCommon::create_setting_json() {
 int AzCommon::i2c_setup(int p, i2c_option *opt, short map_set) {
     int i, j, k, x;
     int set_type[16];
-    i2c_map i2cmap_obj;
-    i2c_ioxp i2cioxp_obj;
-    i2c_pim447 i2cpim447_obj;
-    i2c_azxp i2cazxp_obj;
+////    i2c_map i2cmap_obj;
+////    i2c_ioxp i2cioxp_obj;
+////    i2c_pim447 i2cpim447_obj;
+////    i2c_azxp i2cazxp_obj;
     aztrsc_x = 0;
     aztrsc_y = 0;
-    // Serial.printf("i2c_setup: opt_type %D\n", opt->opt_type);
     if (opt->opt_type == 1) {
         // IOエキスパンダ
         memcpy(&i2cioxp_obj, opt->data, sizeof(i2c_ioxp));
         for (i=0; i<i2cioxp_obj.ioxp_len; i++) {
             x = i2cioxp_obj.ioxp[i].addr - 32; // アドレス
-            // Serial.printf("i2c_setup: %D %D %D\n", i, x, ioxp_status[x]);
             // まだ初期化されていないIOエキスパンダなら初期化
             if (ioxp_status[x] < 0) {
                 ioxp_obj[x] = new Adafruit_MCP23X17();
                 ioxp_status[x] = 0;
             }
             if (ioxp_status[x] < 1) {
-            // Serial.printf("i2c_setup: begin %D\n", i2cioxp_obj.ioxp[i].addr);
                 if (ioxp_obj[x]->begin_I2C(i2cioxp_obj.ioxp[i].addr, &Wire)) {
                     ioxp_hash[x] = 1;
                     ioxp_status[x] = 1;
@@ -1169,7 +1193,6 @@ int AzCommon::i2c_setup(int p, i2c_option *opt, short map_set) {
             }
             // ピン初期化
             for (j=0; j<16; j++) {
-            // Serial.printf("i2c_setup: pinMode %D %D\n", j, set_type[j]);
                 ioxp_obj[x]->pinMode(j, set_type[j]);
             }
         }
@@ -1220,7 +1243,6 @@ int AzCommon::i2c_setup(int p, i2c_option *opt, short map_set) {
                     // 元から同じ番号の設定が入っていたら消す
                     setting_press[j].key_num = -1;
                 } else if (setting_press[j].key_num == k) {
-                    // Serial.printf("map: %D %D %D [ %D -> %D ]\n", i, j, k, setting_press[j].key_num, p);
                     setting_press[j].key_num = p;
                 }
             }
@@ -1303,9 +1325,9 @@ void AzCommon::pin_setup() {
     aztouch_read_time = 0;
     aztouch_read_status = 0;
 
+
     // シリアル通信(赤外線)初期化
     if ((seri_tx >= 0 || seri_rx >= 0) && seri_hz > 0 ) {
-        // irSerial.begin(seri_hz, SWSERIAL_8N1, seri_tx, seri_rx , seri_logic, 256);
         irSerial = new SoftwareSerial(seri_rx, seri_tx, seri_logic);
         irSerial->begin(seri_hz);
     }
@@ -1393,8 +1415,6 @@ setting_key_press AzCommon::get_key_setting(int layer_id, int key_num, short pre
     return r;
 }
 
-tracktall_pim447_data pim447_data_old;
-
 
 int AzCommon::i2c_read(int p, i2c_option *opt, bool *read_data) {
     int e, i, j, k, m, n = 0, r, x, y;
@@ -1406,14 +1426,14 @@ int AzCommon::i2c_read(int p, i2c_option *opt, bool *read_data) {
     uint16_t read_one;
     uint16_t read_raw[32];
     Adafruit_MCP23X17 *ioxp;
-    i2c_map i2cmap_obj;
-    i2c_ioxp i2cioxp_obj;
-    i2c_rotary i2crotary_obj;
-    i2c_pim447 i2cpim447_obj;
-    tracktall_pim447_data pim447_data_obj;
-    i2c_azxp i2cazxp_obj;
-    azxp_key_data azxp_key_data_obj;
-    trackpad_cst816_data trackpad_cst816_obj;
+////    i2c_map i2cmap_obj;
+////    i2c_ioxp i2cioxp_obj;
+////    i2c_rotary i2crotary_obj;
+////    i2c_pim447 i2cpim447_obj;
+////    tracktall_pim447_data pim447_data_obj;
+////    i2c_azxp i2cazxp_obj;
+////    azxp_key_data azxp_key_data_obj;
+////    trackpad_cst816_data trackpad_cst816_obj;
     r = 0;
     e = 0;
     if (opt->opt_type == 1) {

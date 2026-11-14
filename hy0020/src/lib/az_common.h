@@ -80,6 +80,15 @@ using namespace Adafruit_LittleFS_Namespace;
 // 分割：子の押されているデータバッファサイズ
 #define  CHILD_INPUT_KEY_MAX  12
 
+// json parse 用に確保するメモリサイズ
+#ifdef _SEEED_XIAO_NRF52840_PLUS_H_
+// XIAO nRF52840 
+#define  JSON_DOC_SIZE  50000
+#else
+// HY0020 
+#define  JSON_DOC_SIZE  20000
+#endif
+
 // 今押されているボタンの情報
 struct press_key_data {
     short action_type; // キーの動作タイプ 0=設定なし / 1=通常入力 / 2=テキスト入力 / 3=レイヤー変更 / 4=WEBフック
@@ -219,8 +228,8 @@ class AzCommon
         void recovery_setting_json(); // 設定JSON復元
         void load_setting_json(); // jsonデータロード
         void clear_keymap(); // キーマップ用に確保しているメモリを解放
-        void get_keymap(JsonObject setting_obj); // JSONデータからキーマップの情報を読み込む
-        void get_keymap_one(JsonObject json_obj, setting_key_press *press_obj, uint16_t lnum, uint16_t knum); // JSONデータからキーマップの情報を読み込む(1キー分)
+        void get_keymap(JsonVariantConst setting_obj); // JSONデータからキーマップの情報を読み込む
+        void get_keymap_one(JsonVariantConst json_obj, setting_key_press *press_obj, uint16_t lnum, uint16_t knum); // JSONデータからキーマップの情報を読み込む(1キー分)
         int read_file(char *file_path, uint8_t *read_data); // ファイルからデータを読み出す
         int write_file(char *file_path, uint8_t *write_data, int data_len); // ファイルにデータを保存する
         int remove_file(char *file_path); // ファイルを削除する
@@ -416,9 +425,6 @@ extern uint8_t key_count_auto_save;
 
 // 共通クラスリンク
 extern AzCommon common_cls;
-
-// 設定JSONオブジェクト
-extern JsonObject setting_obj;
 
 
 // キーが押された時の設定

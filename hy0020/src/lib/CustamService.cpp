@@ -7,7 +7,7 @@ int write_index;
 BLECustam blecus; // 送受信用サービス
 
 
-// ブラウザからデータを受け取った(BLE Uart)
+// ブラウザor親からデータを受け取った(BLE Uart)
 void prph_bleuart_rx_callback(uint16_t conn_handle)
 {
 	int p;
@@ -19,7 +19,6 @@ void prph_bleuart_rx_callback(uint16_t conn_handle)
 		remap_buf[p] = (uint8_t)bleuart.read();
 		p++;
 	}
-  
 	// それ以外は共通処理
 	HidrawCallbackExec(data_length);
 	// 返信データ送信

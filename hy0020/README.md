@@ -18,6 +18,14 @@ Adafruit MCP23017 Arduino Library by Adafruit version 2.3.2
 
 <br><br>
 
+# 下記ファイルの BLE_GATT_ATT_MTU_DEFAULT がデフォルト 23 を 35 にしないと 送信する時 20 で通知が行ってしまう
+
+```
+C:\Users\user\AppData\Local\Arduino15\packages\adafruit\hardware\nrf52\1.7.0\cores\nRF5\nordic\softdevice\s140_nrf52_7.3.0_API\include\ble_gatt.h
+```
+
+<br><br>
+
 # 3. ArduinoIDE で hy0020.ino を開いてHY0020へ書き込みを行う
 1.の「動作確認手順書」を参考にPCとHY0020を繋いでください。<br>
 ArduinoIDEで hy0020.ino を開いて、メニューの三角マークを押して書き込みを行って下さい。<br>
@@ -95,6 +103,26 @@ const uint32_t g_ADigitalPinMap[] = {
   30, // A6
   31, // A7
 };
+
+```
+
+<br><br>
+
+
+# ボード別の処理
+
+```
+#ifdef _VARIANT_FEATHER52832_
+  // HY0020 の時
+#endif
+
+#ifndef _VARIANT_FEATHER52832_
+  // HY0020 以外の時
+#endif
+
+#ifdef _SEEED_XIAO_NRF52840_PLUS_H_
+  // XIAO nRF52840 の時
+#endif
 
 ```
 

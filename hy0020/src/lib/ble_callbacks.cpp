@@ -174,7 +174,7 @@ void HidrawCallbackExec(int data_length) {
 
 		}
 		case if_fast_get_file_end: { // 0x53 高速取得終了
-			aztool_mode_flag = 2;
+			aztool_mode_flag = 1;
 			save_file_length = 0;
 			fast_save_file_index = 0;
 			free(save_file_data);
@@ -295,7 +295,7 @@ void HidrawCallbackExec(int data_length) {
 			send_buf[0] = id_remove_file;
 		    // ファイルがあればファイルを消す
 			if (InternalFS.exists(target_file_path)) {
-				if (!InternalFS.remove(target_file_path)) {
+				if (!common_cls.remove_file(target_file_path)) {
 					// 削除失敗したら2にする
 					send_buf[1] = 0x02;
 				} else {
@@ -391,23 +391,15 @@ void HidrawCallbackExec(int data_length) {
 			// ここのコードをマネした： https://github.com/adafruit/Adafruit_nRF52_Arduino/blob/master/libraries/Adafruit_LittleFS/src/Adafruit_LittleFS.cpp#L258-L268
 			send_buf[0] = id_get_disk_info; // 結果の返すコマンド
 			// spiffs の容量
-			lfs_t *f;
-			f = InternalFS._getFS();
-			m = f->cfg->block_count * f->cfg->block_size;
-			send_buf[1] = ((m >> 24) & 0xff);
-			send_buf[2] = ((m >> 16) & 0xff);
-			send_buf[3] = ((m >> 8) & 0xff);
-			send_buf[4] = (m & 0xff);
+			send_buf[1] = 0;
+			send_buf[2] = 0;
+			send_buf[3] = 0;
+			send_buf[4] = 0;
 			// spiffs の使用容量
-			InternalFS._lockFS();
-			size_t block_used = 0;
-			lfs_traverse(f, _lfs_count, &block_used);
-			InternalFS._unlockFS();
-			m = block_used * f->cfg->block_size;
-			send_buf[5] = ((m >> 24) & 0xff);
-			send_buf[6] = ((m >> 16) & 0xff);
-			send_buf[7] = ((m >> 8) & 0xff);
-			send_buf[8] = (m & 0xff);
+			send_buf[5] = 0;
+			send_buf[6] = 0;
+			send_buf[7] = 0;
+			send_buf[8] = 0;
 			// 結果を返すコマンドを送信
 			for (i=9; i<OUTPUT_REPORT_RAW_MAX_LEN; i++) send_buf[i] = 0x00;
 			return;
@@ -819,11 +811,13 @@ void HidrawCallbackExec(int data_length) {
 			// 子端末にファイル取得要求
 			send_buf[0] = id_get_file_start;
 			send_buf[1] = 0x00; // 通常送信モードで送ってもらう
-			for (i=1; i<(OUTPUT_REPORT_RAW_MAX_LEN - 1); i++) {
+			for (i=1; i<(OUTPUT_REPORT_RAW_MAX_LEN - 2); i++) {
 				send_buf[i+1] = remap_buf[i];
 			}
 			// sprintf("%c/kle.json", id_get_file_start);
+// Serial.printf("id_get_child_file: %d %d %d %d %d %d %d %d %d\n", send_buf[0], send_buf[1], send_buf[2], send_buf[3], send_buf[4], send_buf[5], send_buf[6], send_buf[7], send_buf[8]);
 			clientUart.write(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
+			clientUart.flush();
 			// 小からファイルを受け取った後に
 			// このタイミングではブラウザには何も返さない
 			send_buf[0] = 0x00;
@@ -849,7 +843,28 @@ void HidrawCallbackExec(int data_length) {
 	}
 }
 
-// BLE クライアント アドバタイズ端末を発見した時の スキャン コールバック
+// BLE HID Custam コネクションが確立した時のコールバック(BLE HID)
+void hid_connect_callback(uint16_t conn_handle)
+{
+  BLEConnection* hid_conn = Bluefruit.Connection(conn_handle); // 接続情報取得
+  hid_conn->requestPHY();
+  hid_conn->requestDataLengthUpdate(); // データサイズを可変にする
+  hid_conn->requestMtuExchange(OUTPUT_REPORT_RAW_MAX_LEN + 3); // 送信MTUサイズ指定
+  hid_conn->requestConnectionParameter(24); // コネクションインターバル設定
+  delay(100);
+}
+
+// BLE HID コネクションが終了した時のコールバック(BLE HID)
+void hid_disconnect_callback(uint16_t conn_handle, uint8_t reason)
+{
+  (void) conn_handle;
+  (void) reason;
+  // コネクション切れるたびに再起動する
+  // aztool_mode_flag = 3;
+//  if (aztool_mode_flag != 3) aztool_mode_flag = 0;
+}
+
+// BLE クライアント アドバタイズ端末を発見した時の スキャン コールバック親側（BLE親が子端末を探している時）
 void scan_callback(ble_gap_evt_adv_report_t* report)
 {
   short i;
@@ -897,7 +912,7 @@ void scan_callback(ble_gap_evt_adv_report_t* report)
 }
 
 
-// BLE Client コネクションが確立した時のコールバック
+// BLE Client コネクションが確立した時の親側のコールバック(BLE親→BLE子)
 void client_connect_callback(uint16_t conn_handle)
 {
   // 相手の端末名、アドレスを取得
@@ -910,7 +925,6 @@ void client_connect_callback(uint16_t conn_handle)
   BLEConnection* conn = Bluefruit.Connection(conn_handle); // 接続情報取得
   ble_gap_addr_t addr = conn->getPeerAddr(); // 接続アドレス取得
   conn->getPeerName(central_name, sizeof(central_name)); // 接続端末の名前取得
-
   if (ble_scan_flag) {
 	// アドバタイズ端末スキャン中
 	ble_scan_handle = conn_handle; // スキャン中にコネクションしたハンドルを保持
@@ -987,7 +1001,13 @@ void client_connect_callback(uint16_t conn_handle)
 	} else {
 		// Uart サービスが無ければ接続しない
 		Bluefruit.disconnect(conn_handle);
+		return;
 	}
+	conn->requestPHY();
+	conn->requestDataLengthUpdate(); // データサイズを可変にする
+	conn->requestMtuExchange(OUTPUT_REPORT_RAW_MAX_LEN + 3); // 送信MTUサイズ指定
+	conn->requestConnectionParameter(24); // コネクションインターバル設定
+	delay(100);
 
   } else if (strlen(child_name)) {
 	// 子端末の名前が設定してあれば、名前が一致する端末だけ接続する
@@ -1005,10 +1025,12 @@ void client_connect_callback(uint16_t conn_handle)
 			} else {
 				// Dis から Model が無ければ接続しない
 				Bluefruit.disconnect(conn_handle);
+				return;
 			}
 		} else {
 			// Dis サービスが無ければ接続しない
 			Bluefruit.disconnect(conn_handle);
+			return;
 		}
 		// Uart サービスがあれば Uart 初期化
 		if (clientUart.discover(conn_handle)) {
@@ -1023,13 +1045,16 @@ void client_connect_callback(uint16_t conn_handle)
 			Bluefruit.disconnect(conn_handle);
 			// キーボードリスタート要求
 			aztool_mode_flag = 3;
+			return;
 		} else {
 			// Uart サービスが無ければ接続しない
 			Bluefruit.disconnect(conn_handle);
+			return;
 		}
 	} else {
 		// 端末名が一致しない端末は接続しない
 		Bluefruit.disconnect(conn_handle);
+		return;
 	}
 
   }
@@ -1037,6 +1062,7 @@ void client_connect_callback(uint16_t conn_handle)
 
 
 /**
+ * 接続解除(BLE親→BLE子)
  * BLE Client Callback invoked when a connection is dropped
  * @param conn_handle
  * @param reason is a BLE_HCI_STATUS_CODE which can be found in ble_hci.h
@@ -1045,12 +1071,14 @@ void client_disconnect_callback(uint16_t conn_handle, uint8_t reason)
 {
 	(void) conn_handle;
 	(void) reason;
+	// キーボード入力モードに戻す
+	aztool_mode_flag = 0;
 	// 接続したよフラグを下げる
 	child_conn_flag = false;
 }
 
 
-// 分割キーボード小から送られてきたコマンドを親が取得した時のコールバック
+// 分割キーボード小から送られてきたコマンドを親が取得した時のコールバック(親側)
 // (親側処理：いつもはAZTOOL側がやってる処理)
 void bleuart_rx_callback(BLEClientUart& uart_svc)
 {
@@ -1069,7 +1097,6 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 
 	uint8_t *command_id = &(get_data[0]);
 	memset(send_data, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
-
 	switch (*command_id) {
 		case id_get_file_start: { // 0x30 ファイル取得開始を受け取った
 			if (!get_data[1]) {
@@ -1101,7 +1128,7 @@ void bleuart_rx_callback(BLEClientUart& uart_svc)
 		case id_get_file_data: {
 			// ファイルデータを受け取る
 			s = (get_data[1] << 16) + (get_data[2] << 8) + get_data[3];
-			for (i=0; i<16; i++) {
+			for (i=0; i<(OUTPUT_REPORT_RAW_MAX_LEN - 4); i++) {
 				if (s < save_file_length) {
 					save_file_data[s] = get_data[i + 4];
 				    s++;

@@ -24,15 +24,22 @@ AzKeyboard azkb = AzKeyboard();
 
 void setup() 
 {
+    // Serial.begin(115200);
+    // while (!Serial) { delay(100); }
+
     // 共通処理の初期化
     common_cls.common_start();
 
     // 設定jsonの読み込み
+    // common_cls.create_setting_json();
     common_cls.load_setting_json();
 
-    // バッテリチャージを 50mA -> 100mA に設定
-    // pinMode(PIN_CHARGING_CURRENT, OUTPUT);
-    // digitalWrite(PIN_CHARGING_CURRENT, LOW);
+#ifdef PIN_CHARGING_CURRENT
+    // XIAO nRF52840 の場合 バッテリチャージを 50mA -> 100mA に設定
+    pinMode(PIN_CHARGING_CURRENT, OUTPUT);
+    digitalWrite(PIN_CHARGING_CURRENT, LOW);
+#endif
+
 
     // 電源ピンの設定
     if (power_pin >= 0) {

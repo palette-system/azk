@@ -10,11 +10,29 @@ BleKeyboardJIS::BleKeyboardJIS(void)
 
 
 // BLEキーボードとして処理開始
-void BleKeyboardJIS::begin(char *deviceName)
+void BleKeyboardJIS::begin(void)
 {
     uint8_t  child_file_data[16]; // 前に接続した子端末のアドレスデータ
     char addr_path[] = "/child";
     short r;
+
+    // Bluefruit.configCentralBandwidth(BANDWIDTH_MAX);
+    /*
+    Bluefruit.configPrphConn(
+      INPUT_REPORT_RAW_MAX_LEN + 3,
+      BLE_GAP_EVENT_LENGTH_DEFAULT,
+      BLE_GATTS_HVN_TX_QUEUE_SIZE_DEFAULT,
+      BLE_GATTC_WRITE_CMD_TX_QUEUE_SIZE_DEFAULT
+    );
+    */
+    /*
+    Bluefruit.configCentralConn(
+      INPUT_REPORT_RAW_MAX_LEN + 3,
+      BLE_GAP_EVENT_LENGTH_DEFAULT,
+      BLE_GATTS_HVN_TX_QUEUE_SIZE_DEFAULT,
+      BLE_GATTC_WRITE_CMD_TX_QUEUE_SIZE_DEFAULT
+    );
+    */
 
     if (ble_type == 1) { // 分割：親
       Bluefruit.begin(1, 1); // HID (1 接続) , BLE クライアント(1 接続)
@@ -22,8 +40,12 @@ void BleKeyboardJIS::begin(char *deviceName)
       Bluefruit.begin(1); // HID (1 接続)
     }
     Bluefruit.setTxPower(4);    // Check bluefruit.h for supported values
-    Bluefruit.setName(deviceName);
+    Bluefruit.setName(keyboard_name_str);
     Bluefruit.getAddr(my_addr); // 自分のアドレス取得
+
+    // HID の接続、切断時のコールバック登録
+    Bluefruit.Periph.setConnectCallback(hid_connect_callback);
+    Bluefruit.Periph.setDisconnectCallback(hid_disconnect_callback);
 
     r = common_cls.read_file(addr_path, child_file_data);
     if (r > 0) {
@@ -112,8 +134,9 @@ void BleKeyboardJIS::begin(char *deviceName)
      * Note: It is already set by BLEHidAdafruit::begin() to 11.25ms - 15ms
      * min = 9*1.25=11.25 ms, max = 12*1.25= 15 ms 
      */
-    /* Bluefruit.Periph.setConnInterval(9, 12); */
+    // Bluefruit.Periph.setConnInterval(12, 160);
     // Bluefruit.Periph.setConnInterval(9, 64);
+    // Bluefruit.setConnInterval(9, 12);
   
     // Set up and start advertising
     startAdv();
@@ -124,22 +147,22 @@ void BleKeyboardJIS::begin(char *deviceName)
 void BleKeyboardJIS::startAdv(void)
 {  
   // Advertising packet
+  Bluefruit.Advertising.stop();
+  Bluefruit.Advertising.clearData();
+  delay(100);
   Bluefruit.Advertising.addFlags(BLE_GAP_ADV_FLAGS_LE_ONLY_GENERAL_DISC_MODE);
+  // Advertising でデータを渡したい時はこれで渡せる
+  // Bluefruit.Advertising.addData(BLE_GAP_AD_TYPE_MANUFACTURER_SPECIFIC_DATA, manuf_data, sizeof(manuf_data));
   Bluefruit.Advertising.addTxPower();
-  if (ble_type == 0 || ble_type == 1) { // シングル / 分割：親
-    Bluefruit.Advertising.addAppearance(BLE_APPEARANCE_HID_KEYBOARD);
-  }
-  
-  // Include BLE HID service
-  if (ble_type == 0 || ble_type == 1) { // シングル / 分割：親
-    Bluefruit.Advertising.addService(blehid); // HID
-  }
   if (ble_type == 2) { // 分割：小
     Bluefruit.Advertising.addService(bleuart); // Uart
   }
   if (ble_type == 0 || ble_type == 1) { // シングル / 分割：親
+    Bluefruit.Advertising.addAppearance(BLE_APPEARANCE_HID_KEYBOARD);
     Bluefruit.Advertising.addService(blecus); // Custam
+    Bluefruit.Advertising.addService(blehid); // HID
   }
+  
 
   // There is enough room for the dev name in the advertising packet
   Bluefruit.Advertising.addName();
@@ -184,19 +207,25 @@ bool BleKeyboardJIS::isConnected(void)
 };
 
 
+
   // ファイルのfast送信処理
 void BleKeyboardJIS::fast_save_file(void)
 {
   short i, m;
+  // Bluefruit.Periph.setConnInterval(9, 12);
+  // Bluefruit.setConnInterval(9, 12);
   memset(send_buf, 0x00, OUTPUT_REPORT_RAW_MAX_LEN);
   // 送信はじめはちょっと待つ
   if (fast_save_file_index == 0) {
-    delay(300); // この待ちが無いと indicate を受け取ってくれない 100 では短かった
+    delay(50); // この待ちが無いと indicate を受け取ってくれない 100 では短かった
   } else {
     delay(10);
   }
   // 送信が終わってれば何もしない
-  if (fast_save_file_index >= save_file_length) return;
+  if (fast_save_file_index >= save_file_length) {
+    aztool_mode_flag = 1; // fast送信モードを終わらせてモードを戻す
+    return;
+  }
   // 送信データ作成
   send_buf[0] = if_fast_get_file_data;
   send_buf[1] = ((fast_save_file_index >> 16) & 0xff);
@@ -212,11 +241,8 @@ void BleKeyboardJIS::fast_save_file(void)
   if (ble_type == 2) { // 分割：小
     bleuart.write(send_buf, OUTPUT_REPORT_RAW_MAX_LEN); // BLE Uart で送信
   } else if (ble_type == 0 || ble_type == 1) { // シングル || 分割：親
-		// _characteristic_input->notify(fast_send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
 		_characteristic_input->indicate(send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
   }
-  // bleuart.write(fast_send_buf, OUTPUT_REPORT_RAW_MAX_LEN);
-  // bleuart.flush(); // 中身が送信バッファをクリアするだけだった
 };
 
 unsigned short BleKeyboardJIS::modifiers_press(unsigned short k) {
@@ -343,8 +369,6 @@ void BleKeyboardJIS::sendReport(hid_keyboard_report_t* keys)
 {
     this->setConnInterval(0); // 消費電力モード解除
     blehid.keyboardReport(keys);
-    // this->pInputCharacteristic->setValue((uint8_t*)keys, sizeof(KeyReport));
-    // this->pInputCharacteristic->notify();
 };
 
 void BleKeyboardJIS::sendReport(MediaKeyReport* keys)
